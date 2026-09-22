@@ -21,7 +21,12 @@ A disagreement between any two of them is an open issue, never something to reso
 - **Never read a price from the protocol's own pool**, and never make the core depend on Uniswap, the vault or any hook. The core's only external calls are the collateral token, the price feed and the stablecoin.
 - **Never make a risk-reducing action depend on a price, an administrative permission or a callback into user code**: `repay`, `addColl`, `closeTrove`, Stability Pool withdrawal, `claimSurplus`, `settleTrove`. Ownership checks on the caller's own Trove and the token transfers themselves are of course required; what is forbidden is any dependency on a price feed, a governance switch, or a call whose failure a third party can cause.
 - **Never add a scan over all Troves** in any path reachable after a shutdown. Settlement is constant work per Trove by design (`n_open` counter, batches of 50).
-- **Do not invent numbers.** Every figure quoted in a document must come from `docs/RESULTS.md`, which lists the hash of every file it depends on. If you change a file in that manifest, regenerate the affected results or mark the table stale.
+- **Do not type numbers into documents.** Every figure quoted in a document comes from `docs/RESULTS.md`, and every figure
+  in `docs/RESULTS.md` is recorded by the run that computes it (`fig()` in `model/figures.py`) and checked by
+  `check_figures.py`. Record the figure at the line that computes it; never write the value into the document. The
+  manifest additionally hashes every file the results depend on, `contracts/` and the pinned submodules included.
+- **Never lower a coverage floor to make a run pass.** `MIN_COVERAGE` in `fuzz.py` states how often each operation must
+  actually succeed. A count that has fallen means a path became unreachable, and that is the finding, not the obstacle.
 - **Rounding direction is a rule**: the protocol rounds up when it mints and down when it pays. Every deviation must be documented at the rule that causes it.
 
 ## 3. Before you change anything
@@ -29,10 +34,11 @@ A disagreement between any two of them is an open issue, never something to reso
     cd model
     python3 test_scenarios.py          # must print 30/30 (or more)
     python3 test_econ_sim.py
-    python3 fuzz.py 10 200
+    python3 fuzz.py 10 200             # smoke; the coverage floors are only enforced at 30 300 and above
     python3 fuzz_oracle.py 50 100
     python3 spec_check.py              # every scenario cited in SPEC.md exists and every scenario is cited
-    python3 check_manifest.py          # docs/RESULTS.md manifest matches the files
+    python3 check_manifest.py          # the manifest matches the files and the pinned submodules
+    python3 check_figures.py           # every figure in docs/RESULTS.md matches the run that produced it
     python3 mutants.py                 # all mutants killed, none invalid (slow; CI runs it)
     cd ../contracts && forge test
 
@@ -45,8 +51,10 @@ If any of these fails before your change, stop and report; do not start from a b
 2. Change `model/model.py`.
 3. Add or update a scenario in `model/test_scenarios.py` that fails without your change and passes with it. Prefer an *independent* expectation (rational arithmetic from first principles) over asserting what the code returns.
 4. Add a mutant to `model/mutants.py` that restores the old behaviour, and check it is killed: `python3 mutants.py M<n>`. A mutant whose target string no longer matches is reported INVALID and fails CI; update it when you refactor the line it targets.
-5. If the change touches settlement, staking, the vault or bad debt, extend the fuzzer's operations and properties in `fuzz.py`; the fuzzer has found real bugs that the scenarios missed.
-6. Run everything in §3. Regenerate `docs/RESULTS.md` sections that depend on changed files and update the manifest.
+5. If the change touches settlement, staking, the vault or bad debt, extend the fuzzer's operations and properties in `fuzz.py`; the fuzzer has found real bugs that the scenarios missed. A new operation needs an entry in `MIN_COVERAGE`, or nothing notices when it stops being reachable.
+6. Run everything in §3. Then regenerate the record, in this order, and read the diff:
+   `python3 test_scenarios.py && python3 test_econ_sim.py && python3 fuzz.py 30 300 && python3 fuzz_oracle.py 200 150 && python3 mutants.py`,
+   then `python3 check_figures.py --write` and `python3 check_manifest.py --write`.
 7. Update `docs/WHITEPAPER.md` only if a reader-facing promise changed.
 8. `python3 spec_check.py` must pass.
 

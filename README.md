@@ -8,8 +8,8 @@ An immutable, ETH-backed stablecoin protocol for Base: borrowers set their own i
 | --- | --- |
 | `docs/SPEC.md` | The normative specification: decisions in force, deployment constants, every rule with the test that pins it, open items |
 | `docs/WHITEPAPER.md` | The public whitepaper |
-| `docs/RESULTS.md` | Results of record with a hash manifest; every number in the documents comes from here |
-| `model/` | Executable reference model (Python, standard library only, exact integer arithmetic): 30 scenarios, two fuzzers, 32 mutants, an agent-based simulator |
+| `docs/RESULTS.md` | Results of record: a hash manifest and the figures themselves, each recorded by the run that computes it and checked by `check_figures.py`. Every number in the documents comes from here, and none of them is typed in |
+| `model/` | Executable reference model (Python, standard library only, exact integer arithmetic): 30 scenarios, two fuzzers with asserted coverage floors, 32 mutants, an agent-based simulator |
 | `RELEASING.md` | Release checklist: what must be green, enabled and decided before a version is announced |
 | `AGENTS.md` | Operating rules for AI coding agents and contributors: what must never change, how a rule change is made, what looks like a bug but is not |
 | `contracts/` | Solidity (Foundry): math libraries checked bit-for-bit against the model, the stablecoin, the oracle adapter, the one-shot deployer. The core branch contracts are not written yet |
@@ -34,14 +34,15 @@ An immutable, ETH-backed stablecoin protocol for Base: borrowers set their own i
 
     cd model
     python3 test_scenarios.py          # 30 scenarios
-    python3 fuzz.py 30 300             # accounting fuzzer, invariants before and after every step
+    python3 fuzz.py 30 300             # accounting fuzzer: invariants before and after every step, plus a floor on how often each operation must succeed
     python3 fuzz_oracle.py 200 150     # oracle failure detection
     python3 test_econ_sim.py           # simulator self-tests
     python3 mutants.py M39             # one mutant at a time
     python3 spec_check.py              # every scenario cited in SPEC.md exists and every scenario is cited (it does not check assertions)
 
-    python3 check_manifest.py          # every file behind docs/RESULTS.md has the recorded hash
     python3 mutants.py                 # all 32 mutants; exit code 1 on a survivor or an invalid mutant
+    python3 check_manifest.py          # every file behind docs/RESULTS.md has the recorded hash, contracts and submodule pins included
+    python3 check_figures.py           # every number quoted in docs/RESULTS.md equals what the run above recorded
 
     cd ../contracts                    # submodules: forge-std v1.9.7, openzeppelin-contracts v5.1.0 (clone with --recurse-submodules)
     forge test

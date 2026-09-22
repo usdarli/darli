@@ -167,4 +167,9 @@ if __name__ == "__main__":
             bad += 1
             print(f"FAIL  {fn.__name__}"); traceback.print_exc()
     print(f"\n{len(TESTS) - bad}/{len(TESTS)} simulator self-tests passed")
+    if not bad:
+        from figures import fig, dump
+        fig("econ_sim_total", len(TESTS))
+        fig("econ_sim_passed", len(TESTS) - bad)
+        print(f"figures: {dump('econ_sim')} recorded")
     sys.exit(1 if bad else 0)

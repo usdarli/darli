@@ -207,7 +207,10 @@ I-4 vault accounting (B12) · I-5 Stability Pool solvency (balances cover compou
 and frontend registry totals · I-19 no ownerless `badDebtColl` · I-20 named pools ≥ 0 · I-21 gasPool = Σ per-Trove · I-22 reward ≤ deposit.
 
 **Checked by the fuzzer loop itself, every step:** staking contract covers its liabilities; nobody paid during settlement phase 1 (pot and claims only grow
-while Troves are unsettled); late and surplus entitlements ≤ their pools.
+while Troves are unsettled); late and surplus entitlements ≤ their pools, by a bound of zero wei that is argued at the assertion, not measured.
+
+**Checked once per fuzzer run:** a floor on how often each operation succeeds (`MIN_COVERAGE` in `fuzz.py`). An invariant that holds over a path never taken
+proves nothing, so a path that stops being reachable fails the run.
 
 **Checked inside the operation, not as a separate step:** I-8, an ordinary redemption never lowers the ICR of a Trove above 100 % (asserted by
 cross-multiplication inside `redeem_from_branch`).
@@ -220,16 +223,20 @@ whose message is a price, status or permission message.
 
 ## 12. Conformance map
 
+"Fuzzer: yes" below means the operation is executed under a coverage floor, **not** that the fuzzer would catch a wrong result: the fuzzers check invariants,
+not behaviour. The honest measure is how many of the 32 mutants a random tester kills with no scenario at all, and that number is recorded in `docs/RESULTS.md`
+("What the random testers kill on their own") rather than asserted here.
+
 | Area | Scenarios | Mutants (all killed) | Fuzzer |
 | --- | --- | --- | --- |
 | Interest ledgers, fees, gates, minimum debt | 01–06, 11, 13, 15, 16 | M1, M2, M3 | yes |
 | Stability Pool | 03, 04, 07, 17 | M5, M8, M9 | yes |
-| Liquidation, redistribution, bad debt | 08, 10, 18 | M4 | yes |
+| Liquidation, redistribution, bad debt | 08, 10, 18 | M4 | yes: `liq` and `bad_debt` carry coverage floors, reached through the guided `crash` operation |
 | Redemption | 12, 14, 15, 25 | M6 | yes |
 | Debt cap | 09, 10 | M25–M27 | partly |
 | Oracle | 20 | M11–M15 | fuzz_oracle F1–F9 |
 | Revenue, frontends, staking, vault streams | 03, 04, 05, 13, 19, 21, 24 | M23, M28, M29 | yes (route, stake, claim) |
-| Settlement | 02, 15a, 16, 22, 23, 27–30 | M30–M42 | yes (settle, write-off, late, claims); the accounting fuzzer kills M30 and M42 on its own; the others are killed by scenarios |
+| Settlement | 02, 15a, 16, 22, 23, 27–30 | M30–M42 | yes: `urgent` (settle/write-off), `late` and `claim_late` all carry coverage floors |
 | Deployment | 26 | — | — (Foundry) |
 | Not modelled | sorted list and hints, batch managers, LST pricing, ParameterStore, Uniswap position maths, zappers, real gas | | |
 

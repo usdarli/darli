@@ -8,6 +8,7 @@ import random
 import sys
 import traceback
 
+from figures import fig
 from model import (L_PRECISION, LPFeeVault, OracleFeed, Source, Sequencer, NETWORK_UNSTABLE, P_FLOOR, WAD, DAY, YEAR, VALID, PRICE_INVALID, FAILED, ACTIVE, ZOMBIE, MIN_SP_RESIDUAL,
                    MAX_SP_DEPOSITS, Clock, Token, Feed, System, StreamingStaking, Revert,
                    check_invariants)
@@ -638,8 +639,8 @@ def scenario_17_sp_shadow_accounting():
                 if exact > 10**9:
                     worst_rel = max(worst_rel, short / exact)
                 assert short <= 10**3 + exact / 10**9, f"under-payment {float(short)} of {float(exact)} (case {case}, {w})"
-    return (f"never over-pays; worst under-payment {worst_abs} wei / {float(worst_rel):.2e} relative; "
-            f"deepest scale reached {max_scale}")
+    return (f"never over-pays; worst under-payment {fig('sp_worst_underpayment_wei', worst_abs)} wei / "
+            f"{float(worst_rel):.2e} relative; deepest scale reached {fig('sp_deepest_scale', max_scale)}")
 
 
 def scenario_18_direct_transfers():
@@ -967,7 +968,8 @@ def scenario_23_settlement_economics_and_edges():
         unclaimed = b.bad_debt                                     # tokens of other holders (fees sitting in the escrow) keep their equal claim
         assert abs(Fraction(b.bad_debt_coll) - exp_rate * unclaimed) <= 3, "what is left in the pot must be exactly the unclaimed tokens' share"
         assert b.settle_surplus_pool <= 2, "only rounding dust may remain in the surplus pool"
-        out.append(f"{'borrowers absorb' if absorbs else 'vault parity'}: holders {float(exp_rate) * 1000:.4f} per token, healthy borrower keeps {s1 / E:.3f} ETH")
+        rate_fig = fig("holders_rate_absorb" if absorbs else "holders_rate_parity", float(exp_rate) * 1000, ".4f")
+        out.append(f"{'borrowers absorb' if absorbs else 'vault parity'}: holders {rate_fig:.4f} per token, healthy borrower keeps {s1 / E:.3f} ETH")
     # --- surplus is released only after phase 1 when it may still be needed
     s, b, weth = _settlement_state((6, 3), 2000, 1000, True)
     b.settle_trove(1)
@@ -1115,9 +1117,14 @@ def scenario_26_one_shot_deployment_and_the_pool_race():
             "an empty pool's price is corrected for free; the core has no pointer to the market layer")
 
 
-def scenario_27_settlement_always_completes():
+def scenario_27_settlement_is_bounded_paid_and_unblockable():
     """Equal pay-outs are worth nothing if nobody can be paid. Phase 1 must be cheap per Trove, paid for,
-    batchable, and ONE Trove that cannot be settled must not hold everybody hostage, without re-creating inequality."""
+    batchable, and ONE Trove that nobody settles must not hold everybody hostage, without re-creating inequality.
+
+    What this does NOT prove is that settlement always completes: `write_off` is the escape from a Trove nobody settles,
+    but it reads the Trove's debt and the reference price through the same `_touch` and `_settle_price` that
+    `settle_trove` uses, so a persistent revert inside those shared parts would stop both paths. That case is open
+    (`docs/SPEC.md` 9.3 and 13) and is deliberately not claimed here."""
     out = []
     GD = E // 100                                                   # gas deposit per Trove
     def world(n, colls=None, absorbs=True):
@@ -1131,21 +1138,26 @@ def scenario_27_settlement_always_completes():
             weth.mint(f"t{i}", c + GD); b.open_trove(f"t{i}", c, 5_000 * E, 5 * PCT)
         return clock, s, b, weth, feed
     # (a) 1,500 Troves: constant work per Trove, no scan, bounded batches, the settler is paid
-    clock, s, b, weth, feed = world(1_500)
+    from model import Branch
+    n_troves, batch = 1_500, Branch.MAX_SETTLE_BATCH
+    clock, s, b, weth, feed = world(n_troves)
     feed.price = 1000 * E; b.trigger_shutdown()
-    assert b.unsettled == 1_500 and b.gas_pool == 1_500 * GD
-    expect_revert(b.settle_troves, list(range(1, 52)), "keeper")    # 51 > MAX_SETTLE_BATCH
+    assert b.unsettled == n_troves and b.gas_pool == n_troves * GD
+    expect_revert(b.settle_troves, list(range(1, batch + 2)), "keeper")    # one over MAX_SETTLE_BATCH
     real_scan = b.open_troves
     def no_scan():
         raise AssertionError("settlement scanned the set of Troves")
     b.open_troves = no_scan
-    ids = list(range(1, 1_501)); random.Random(7).shuffle(ids)
-    for k in range(0, 1_500, 50):
-        b.settle_troves(ids[k:k + 50], "keeper")
+    ids = list(range(1, n_troves + 1)); random.Random(7).shuffle(ids)
+    for k in range(0, n_troves, batch):
+        b.settle_troves(ids[k:k + batch], "keeper")
     b.open_troves = real_scan
-    assert b.unsettled == 0 and b.n_open == 0 and b.gas_pool == 0 and weth.bal["keeper"] == 1_500 * GD
+    assert b.unsettled == 0 and b.n_open == 0 and b.gas_pool == 0 and weth.bal["keeper"] == n_troves * GD
     check_invariants(s, "27a")
-    out.append("a: 1,500 Troves settled in 30 batches without a single scan; keeper paid 1,500 gas deposits")
+    fig("settle_troves", n_troves, ",")
+    fig("settle_batch_size", batch)
+    out.append(f"a: {n_troves:,} Troves settled in {fig('settle_batches', -(-n_troves // batch))} batches"
+               f" without a single scan; keeper paid {n_troves:,} gas deposits")
     # (b) one Trove is never settled
     for absorbs in (True, False):
         clock, s, b, weth, feed = world(3, colls=(6, 4, 6), absorbs=absorbs)      # at 1000: 120%, 80%, 120% -> TCR 107%, shutdown
@@ -1198,6 +1210,8 @@ def scenario_27_settlement_always_completes():
     feed.price = 1000 * E; b.trigger_shutdown(); b.settle_trove(1, "k"); b.settle_trove(2, "k")
     whole = b.bad_debt_coll * (5_000 * E) // b.bad_debt
     parts = sum(b.redeem_bad_debt_coll("A", 500 * E) for _ in range(10))
+    fig("claim_split_parts", 10)
+    fig("claim_split_loss_wei", whole - parts)
     assert 0 <= whole - parts <= 10, f"splitting a claim in 10 moved it by {whole - parts} wei"
     # the general bound: each earlier claim leaves < 1 wei of dust in the pot, and a later claim of R units receives
     # at most R / claims <= 1 of that dust per earlier claim -> a pay-out moves by at most (number of earlier claims) wei.
@@ -1209,8 +1223,11 @@ def scenario_27_settlement_always_completes():
     for _ in range(100):
         b.redeem_bad_debt_coll("B", 2_000)
     a_after = b.redeem_bad_debt_coll("A", 5_000 * E)
-    assert 0 <= a_after - a_first <= 100, f"100 earlier claims moved A by {a_after - a_first} wei (bound 100)"
-    out.append(f"c: a pay-out moves by at most one wei per EARLIER claim (100 tiny claims moved the next one by {a_after - a_first} wei); splitting a claim into 10 parts loses at most 10 wei")
+    n_earlier = fig("claim_order_earlier_claims", 100)
+    shift = fig("claim_order_shift_wei", a_after - a_first)
+    assert 0 <= shift <= n_earlier, f"{n_earlier} earlier claims moved A by {shift} wei (bound {n_earlier})"
+    out.append(f"c: a pay-out moves by at most one wei per EARLIER claim ({n_earlier} tiny claims moved the next one by"
+               f" {shift} wei); splitting a claim into 10 parts loses at most 10 wei")
     return "; ".join(out)
 
 
@@ -1297,6 +1314,9 @@ def scenario_29_late_recovery_ownership():
         assert abs(h1 + h2 - ref["h"]) <= 3 and abs(k_all - ref["k"]) <= 3, "holders differ from a timely settlement"
         assert early_a + late_a <= ref["a"] + 3, "(4) a borrower must never be paid more than a timely settlement gives him"
         check_invariants(s, "29-3")
+        fig("late_recovery_a_eth", (early_a + late_a) / E, ".4f")
+        fig("late_recovery_b_eth", sb / E, ".4f")
+        fig("late_recovery_single_owner_eth", (early_a + late_a + sb) / E, ".4f")
         out.append(f"3+4 ({'absorb' if absorbs else 'parity'}): A {(early_a + late_a) / E:.4f} = ref {ref['a'] / E:.4f}; B {sb / E:.4f} = ref {ref['b'] / E:.4f}")
     # (4) again with a REAL shortfall (round-28 state), both paths must agree
     for absorbs in (True, False):
@@ -1395,8 +1415,12 @@ def scenario_30_settlement_path_independence():
         assert b.settle_surplus_pool <= 6, "borrowers' collateral left without a withdrawal path"
         assert abs(b.late_pool - unexercised * b.late_per_unit // L_PRECISION) <= 6, "late pool must hold exactly the unexercised claims' share"
         assert b.gas_pool == 0 and all(v == gd for v in b.gas_paid.values()) if gd else True, "each Trove must pay exactly its deposit"
+        if gd:
+            fig("path_gas_posted_eth", len(colls) * gd / E, ".3f")
+            fig("path_gas_paid_eth", sum(b.gas_paid.values()) / E, ".3f")
         checked += 1
-    return f"{checked} path combinations end within 6 wei of the independent computation; no residue, every deposit paid exactly once"
+    return (f"{fig('path_combinations', checked)} path combinations end within"
+            f" {fig('path_tolerance_wei', 6)} wei of the independent computation; no residue, every deposit paid exactly once")
 
 
 SCENARIOS = [v for k, v in sorted(globals().items()) if k.startswith("scenario_")]
@@ -1411,5 +1435,10 @@ if __name__ == "__main__":
             failed += 1
             print(f"FAIL  {fn.__name__}")
             traceback.print_exc()
+    fig("scenarios_total", len(SCENARIOS))
+    fig("scenarios_passed", len(SCENARIOS) - failed)
     print(f"\n{len(SCENARIOS) - failed}/{len(SCENARIOS)} scenarios passed")
+    if not failed:
+        from figures import dump
+        print(f"figures: {dump('scenarios')} recorded")
     sys.exit(1 if failed else 0)

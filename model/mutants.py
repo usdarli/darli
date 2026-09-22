@@ -153,6 +153,18 @@ def summary(rows):
         print("  SURVIVED:", r[0])
     for r in invalid:
         print("  INVALID:", r[0])
+    if not survived and not invalid and len(rows) > 1:        # a full run, not `mutants.py M39`
+        from figures import fig, dump
+        fig("mutants_total", len(rows))
+        fig("mutants_killed", len(killed))
+        fig("mutants_survived", len(survived))
+        fig("mutants_invalid", len(invalid))
+        # The split matters: docs/SPEC.md 12 claims fuzzer coverage per area, and the honest figure is how many mutants
+        # the random testers kill WITHOUT a scenario. It is recorded rather than described.
+        fig("mutants_killed_by_fuzz", sum(1 for r in rows if r[2] == "caught"))
+        fig("mutants_killed_by_fuzz_oracle", sum(1 for r in rows if r[3] == "caught"))
+        fig("mutants_killed_by_a_fuzzer", sum(1 for r in rows if r[2] == "caught" or r[3] == "caught"))
+        print(f"figures: {dump('mutants')} recorded")
     return 0 if not survived and not invalid else 1
 
 

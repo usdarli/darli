@@ -126,6 +126,10 @@ def _main():
                 tot[k] = tot.get(k, 0) + v
         print(f"{seeds} seeds x {steps} steps: properties F1-F9 held after every step")
         print(tot)
+        if (seeds, steps) == (200, 150):                 # the configuration docs/RESULTS.md records
+            from figures import fig, dump
+            fig("fuzz_oracle_stats", tot)
+            print(f"figures: {dump('fuzz_oracle')} recorded")
 
 
 if __name__ == "__main__":

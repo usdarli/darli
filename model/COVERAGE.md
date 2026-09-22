@@ -6,14 +6,23 @@ escrow and frontend totals · no ownerless bad-debt collateral · every named po
 
 ## Checked by the fuzzer loop
 staking contract covers its liabilities · nobody paid during settlement phase 1 · late and surplus entitlements ≤ their pools · the deposit paths are exercised.
+The three pool bounds are **argued, not measured**: the late and surplus entitlements may not exceed their pools by a single wei (every division floors in the
+pool's favour), and the staking bound is one wei, which is `liabilities()`'s own deliberate round-up. Derivations sit next to the assertions in `fuzz.py`.
+
+## Coverage floors (`MIN_COVERAGE` in `fuzz.py`)
+An invariant that holds over a path never taken proves nothing. The fuzzer therefore asserts a minimum number of **successful** executions per operation,
+scaled to the budget, and fails when one is not met. Without it, `claim_late` sat at zero executions and liquidation at 17 in 9,000 steps while the
+conformance map claimed fuzzer coverage of both. Floors are enforced only at or above the release budget (30 × 300); a smaller run says in its output that
+it is a smoke run. Never lower a floor to make a run pass: a fallen count means a path became unreachable, and that is the finding.
+
+## Mutants
+32 mutants, all killed, none invalid. The split between what the scenarios pin and what the random testers find on their own is a **recorded figure**, not a
+claim: see "What the random testers kill on their own" in `docs/RESULTS.md`. `python3 mutants.py` prints the attribution per mutant.
 
 ## Checked by dedicated scenarios
 per-depositor Stability Pool exactness against a rational shadow (17) · settlement order independence, every permutation (22) · settlement path independence,
 32 combinations against an independent computation (30) · completion of settlement with 1,500 Troves and a never-settled Trove (27) · late-recovery ownership (29) ·
 oracle failure detection (20) and `fuzz_oracle.py` F1–F9 · one-shot deployment and the pool race (26) · fixed-epoch reward streams (04, 19, 24).
-
-## Mutants
-32 mutants, each killed by at least one scenario (`python3 mutants.py`: 32 run, 32 killed, 0 survived, 0 invalid on the release commit). Inside the harness (fuzz 12 x 250, fuzz_oracle 80 x 120) the accounting fuzzer kills M1, M2, M30 and M42 on its own and the oracle fuzzer kills M3, M11, M12, M13, M14 and M15 on its own; every other mutant is killed only by scenarios.
 
 ## Not modelled
 sorted list and insertion hints · batch managers · LST pricing · real gas · Uniswap position maths and token amounts · zappers · a persistent revert inside the

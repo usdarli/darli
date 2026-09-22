@@ -1,0 +1,53 @@
+{
+  "econ_sim": {
+    "econ_sim_passed": "8",
+    "econ_sim_total": "8"
+  },
+  "fuzz": {
+    "fuzz_max_eps_wei": "17",
+    "fuzz_ops_bad_debt": "23",
+    "fuzz_ops_claim_late": "11",
+    "fuzz_ops_late": "8",
+    "fuzz_ops_liq": "58",
+    "fuzz_ops_redeem": "52",
+    "fuzz_ops_sp_dep": "61",
+    "fuzz_ops_urgent": "37",
+    "fuzz_shutdowns": "33",
+    "fuzz_stats": "{'ok': 4252, 'reverted': 903, 'max_eps': 17, 'max_ratio': 0.4444444444444444, 'shutdowns': 33, 'with_bad_debt': 18, 'troves_rewarded': 51, 'gas_paid_total': 51000000000000000}",
+    "fuzz_troves_rewarded": "51"
+  },
+  "fuzz_oracle": {
+    "fuzz_oracle_stats": "{'Valid': 1243, 'PriceInvalid': 1016, 'NetworkUnstable': 3104, 'Failed': 2814, 'revert': 2364}"
+  },
+  "mutants": {
+    "mutants_invalid": "0",
+    "mutants_killed": "32",
+    "mutants_killed_by_a_fuzzer": "13",
+    "mutants_killed_by_fuzz": "7",
+    "mutants_killed_by_fuzz_oracle": "6",
+    "mutants_survived": "0",
+    "mutants_total": "32"
+  },
+  "scenarios": {
+    "claim_order_earlier_claims": "100",
+    "claim_order_shift_wei": "50",
+    "claim_split_loss_wei": "4",
+    "claim_split_parts": "10",
+    "holders_rate_absorb": "0.8991",
+    "holders_rate_parity": "0.7997",
+    "late_recovery_a_eth": "3.4976",
+    "late_recovery_b_eth": "17.4976",
+    "late_recovery_single_owner_eth": "20.9952",
+    "path_combinations": "32",
+    "path_gas_paid_eth": "0.030",
+    "path_gas_posted_eth": "0.030",
+    "path_tolerance_wei": "6",
+    "scenarios_passed": "30",
+    "scenarios_total": "30",
+    "settle_batch_size": "50",
+    "settle_batches": "30",
+    "settle_troves": "1,500",
+    "sp_deepest_scale": "8",
+    "sp_worst_underpayment_wei": "3"
+  }
+}
