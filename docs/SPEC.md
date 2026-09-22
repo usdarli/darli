@@ -1,0 +1,238 @@
+# Darli v1 — Consolidated Specification
+
+**Version 0.0.1 (2026-09-22).**
+Status of this text and of the model: **the rules in this document are the reference for what the protocol promises**; `model.py` is the reference
+*implementation* of those rules, and the tests pin the two to each other. A discrepancy between this text and the model is an OPEN ISSUE that needs a
+decision and a fix, not a definition of behaviour. 
+Reference notation: `S-NN` = `scenario_NN_*` in `test_scenarios.py`; `F` = a property in `fuzz.py`; `M-n` = mutant n; `I-n` = `check_invariants`. The
+script `spec_check.py` verifies that every `S-NN` named here exists and that every scenario's stated topic is cited at least once. Every rule below carries the identifier of the test that checks it. Rules marked **[open]** are decided in principle but have no binding value or test yet.
+
+
+---
+
+## 0. Decisions in force
+
+| Decision | Value | Status |
+| --- | --- | --- |
+| Governance | **None.** No owner, proxy, pause, setter, timelock or guardian. Every parameter is a deployment constant. | decided |
+| DARLI | **Revenue, no power.** Stakers receive the protocol share of interest and loan fees, pro rata, in fixed weekly epochs. No vote. | decided |
+| Interest split | Stability Pool 72 %, DARLI stakers 25 %, interfaces 3 %. Liquidity providers 0 % (a 10 % share is a studied proposal, not a decision). | decided |
+| Debt cap | **Built-in schedule**: opens at `cap0`, doubles at most every 30 days, stops at `cap_ceiling`. Limits new borrowing only. | decided |
+| After a shutdown | **Staged settlement**: one reference price fixed at shutdown; every Trove settled; then one common rate for every USDarli. No urgent redemption, no repay/close/liquidate after shutdown. | decided |
+| Loss sharing at settlement | **Healthy borrowers' surplus absorbs the shortfall of under-water Troves first**, each giving up the same fraction; holders take a haircut only when all surplus is used. | decided |
+| Settlement completion | Constant work per Trove, batches ≤ 50, the settler is paid the Trove's gas deposit; after 30 days a Trove may be written off; late recoveries reach every claim unit alike. | decided |
+| Deployment | One transaction: token, sealed minters, fixed revenue destination, canonical USDarli/USDC pool at par with no hook, vault bound to it. A pre-initialised pool is tolerated only if it demonstrably exists. | decided |
+| Oracle | One external ETH/USD feed per branch, fixed; sequencer guard; temporary states before a permanent failure; fixed gas stipend. The pool is never a price source. | decided |
+| β (redemption fee sensitivity) | **[open]**: 4 in the pilot simulations; two studies disagree. | decided |
+| Minimum debt | 500 USDarli (proposed) | decided |
+| Collateral | ETH in the protocol's own vault. Not in any pool. | decided |
+
+---
+
+## 1. Units and conventions
+
+- `WAD = 1e18`. All ratios, rates and prices are WAD-scaled. Collateral amounts are normalised to 18 decimals.
+- Rounding: whenever the protocol mints, it rounds **up** (in favour of the system's books); whenever it pays a user, it rounds **down**. Every deviation is
+  listed at the rule that causes it.
+- "Price" is the branch's reference-currency price of one unit of collateral, from the branch's feed (§7).
+- A **system** is one stablecoin with its branches. A **branch** is one collateral inside one system. Version 1 deploys one system (USDarli) with one branch (WETH).
+
+## 2. Constants (deployment; never changeable afterwards)
+
+| Constant | Value | Rule |
+| --- | --- | --- |
+| `MCR` / `CCR` / `SCR` | 110 % / 150 % / 110 % | §4, §6 |
+| Liquidation premium to the Stability Pool / on redistribution | 5 % / 10 % (caps, not guarantees) | §6.2 |
+| Liquidator's share of collateral | 0.5 %, capped at 2 ETH | §6.2 |
+| Interest rate range | 0.5 % – 250 % p.a. | §4.1 |
+| Upfront fee | 7 days of interest at the branch average rate | §4.3 |
+| Rate-change cooldown | 7 days | §4.3 |
+| Minimum debt | 500 (proposed) | §4.2 |
+| Redemption fee floor / half-life / β / initial base-rate component | 0.5 % / 6 h / **[open]** (4 in simulations) / 10 % for the pilot | §5.2 |
+| Interest split (SP / stakers / interfaces) | 72 / 25 / 3 % | §8 |
+| Reward epoch | 7 days | §8.2 |
+| Debt cap schedule | `cap0` 125 000, ceiling 250 000 (pilot), period 30 days | §4.5 |
+| `DUST_THRESHOLD` | 1e12 raw units | §4.6 |
+| `L_PRECISION` (redistribution) / `P_PRECISION` (SP) | 1e36 / 1e36 | §6.3, §6.1 |
+| `MAX_SCALE_DIFF` | 8 | §6.1 |
+| `MAX_SETTLE_BATCH` / `WRITE_OFF_DELAY` | 50 / 30 days | §9 |
+| Gas deposit per Trove | **[open]** (positive; amount to be fixed against measured gas on Base) | §9.3 |
+| Oracle: staleness threshold / failure timeout / grace / gas stipend | 3 × heartbeat / 24 h / 1 h / fixed per feed **[open: measured on a fork]** | §7 |
+
+## 3. Token
+
+- **T1** USDarli is ERC-20 with permit. Minters are the branch contracts of the deployment, written once by the deployer and sealed; nothing can add or remove a minter afterwards. (Foundry `test_minterSetIsSealedForEver`)
+- **T2** Transfers to the token contract itself and to the zero address revert.
+- **T3** `totalSupply == Σ aggDebt` over branches at every instant. (I-1, F)
+
+## 4. Borrowing (live branch)
+
+### 4.1 Trove
+A Trove is an NFT with `coll`, `recordedDebt`, `annualRate`, `stake`, redistribution snapshots, `lastDebtUpdate`, `lastRateAdjust`, `frontendId`, status ∈ {Active, Zombie, ClosedByOwner, ClosedByLiquidation, ClosedBySettlement}.
+
+### 4.2 Two ledgers
+- **B1** Each branch keeps `aggDebt` and `aggWeightedDebtSum = Σ recordedDebt_i × rate_i`. Step A (every state change): mint `p = ceil(aggW × Δt / (YEAR × WAD))`, split as §8; then `aggDebt += p`. Step B (touched Trove): its own interest `floor(debt × rate × Δt / (YEAR × WAD))` is added to `recordedDebt`; no second mint. Time without any transaction changes nothing until the next step A. (S-01, S-05, S-11, M-1 step A rounds down)
+- **B2** Identity at every instant: `aggDebt + pendingAggInterest == Σ troveDebt(now) + badDebt + ε`, `ε ≥ 0`, `ε` bounded empirically (max observed 28 wei over 30 × 300 fuzz steps). (I-2, F)
+- **B3** Interest stops in both ledgers at `shutdownAt`: `t_eff = min(now, shutdownAt)` and `aggW = 0` after shutdown. (S-02, I-3, M-2)
+- **B4** Minimum debt: a Trove is never opened, increased or reactivated below it; a repayment may not take a Trove from ≥ minimum to a non-zero amount below it; a Trove already below it accepts any repayment. Raising the minimum never traps a loan. (S-06 `min_debt_increase`, F `min_debt`)
+- **B5** The last Trove of a branch may close while short by ≤ `DUST_THRESHOLD`; the shortfall is parked in `badDebt`. (S-10-dust, M)
+
+### 4.3 Rates and fees
+- **B6** Opening or adding debt costs an upfront fee = 7 days of interest at the branch average rate, minted and split as §8, added to the debt. (S-05)
+- **B7** `adjustRate` within 7 days of the last change costs the upfront fee on the whole debt and requires ICR ≥ MCR and TCR ≥ CCR afterwards; otherwise free. (S-13)
+
+### 4.4 Risk gate
+- **B8** One shared gate `_requireRiskIncreaseAllowed(debtUp, collDown)` is used by every entry point. It requires: branch not shut down; a `Valid` price; ICR ≥ MCR after the operation; and below CCR, new debt only if TCR ≥ CCR afterwards and collateral out only together with a repayment worth at least as much. (S-15b, S-16, F)
+- **B9** `repay`, `addColl`, `closeTrove`, Stability Pool withdrawal: given their own preconditions (open Trove, sufficient balance, no dust left, valid amount), they depend on no oracle price, no administrative permission and no optional callback into user code, and nothing in the protocol can switch them off while the branch is live. Authorisation of the caller over his own Trove and the transfers of the specified tokens are part of the operations themselves. (S-16 live part, F; see §11 on what is and is not checked)
+- **B10** No pause of any kind exists; the only stop is a shutdown by the rules of §6.5. (S-09, S-16)
+
+### 4.5 Debt cap
+- **B11** `cap(t) = min(ceiling, cap0 × 2^floor((t − t_created) / 30 days))`. Checked on `aggDebt` against voluntary debt increases including their upfront fee; interest, repayment and collateral top-ups are never blocked. (S-09, S-10, M-25, M-26, M-27)
+
+### 4.6 Vault accounting
+- **B12** `accountedColl == Σ coll_i + defaultColl + Σ surplus + badDebtColl + settleSurplusPool + gasPool + latePool`, exactly; vault balance ≥ accounted. Collateral sent straight to the vault belongs to nobody and stays outside every ledger; **there is no skim.** (I-4, S-18, F)
+- **B13** Every named pool is ≥ 0; `gasPool == Σ gas_left[tid]`; no Trove ever pays more reward than its deposit. (I-20/21/22)
+
+## 5. Redemption (live branch)
+
+- **R1** Anyone may redeem USDarli for collateral worth one unit of reference currency per token, minus the fee, whenever the branch has a `Valid` price and `TCR ≥ SCR`. Nobody can switch it off; it stops by itself without a valid price and is replaced by settlement after a shutdown. (S-14 `redemption_routing`, S-16)
+- **R2** Order: lowest `annualRate` first. A Trove left below the minimum becomes a Zombie and leaves the queue; one partially redeemed Zombie (`lastZombieTroveId`) is redeemed first next time. (S-15 (c) zombies, S-12 `end_of_life`)
+- **R3** Across branches: split in proportion to each branch's debt not covered by its Stability Pool, truncated to that uncovered total, shares computed with a running remainder. (S-14 `redemption_routing`)
+- **R4** Two prices: `price` decides redeemability (ICR ≥ 100 %); `redemptionPrice` (conservative) converts debt to collateral. An ordinary redemption never lowers the ICR of a Trove above 100 %. (I-8)
+
+### 5.2 Fee
+- **R5** `fee = min(WAD, floor + decayed_baseRate + requested × WAD² / (supply × β_wad))`, computed from the **requested** amount before redeeming; the **stored** `baseRate` is updated from the amount **actually** redeemed, with β sampled **once** per redemption. Decay: `baseRate × decay^minutes`, `decay = floor(0.5^(1/360) × 1e18) = 998076443575628738`, exponent capped at `MAX_DECAY_MINUTES`. (S-14, S-15 (d), S-25, M-6 base rate from the requested instead of the redeemed amount, Foundry differential vectors)
+- **R6** `INITIAL_BASE_RATE` is a constant: 100 % for an uncapped system; 10 % for the pilot (the cap already limits a run). **β is open** (§0).
+- **R7** The fee stays in the redeemed Trove as collateral.
+
+## 6. Solvency (live branch)
+
+### 6.1 Stability Pool
+- **SP1** Deposits accepted only while the branch is live; withdrawals never restricted, never need a price. (S-15a, S-16, F)
+- **SP2** Product/sum accounting with scale: an offset always leaves ≥ `MIN_SP_RESIDUAL` (1 token) in the pool, so `P > 0`; when `P < P_FLOOR` it is rescaled in a **loop**; a deposit is valid across `MAX_SCALE_DIFF = 8` rescalings and gains are read over all 8. (S-07, S-17, M-5 single `if` instead of a loop, M-8 gains read over two scales only)
+- **SP3** Interest is credited to the pool at the moment it is minted (step A) only if `deposits ≥ MIN_SP_RESIDUAL`; otherwise that share goes to the escrow. A deposit made after a mint earns nothing from it. (S-03, S-04)
+- **SP4** Three separate bounds, not one. (a) *Truncation of scale history*: a deposit is read over at most `MAX_SCALE_DIFF = 8` rescalings of 1e9 each,
+  so the gain it can no longer see is below `deposit × 1e-72`, negligible; this is a bound by construction. (b) *Rounding of the payout arithmetic*: payout
+  ≤ exact + 1 wei (S-17 asserts exactly this tolerance, so "never over-pays" holds to one wei, not absolutely); underpayment ≤ 1 000 wei + exact × 1e-9
+  on S-17's domain. (c) *Observed*: worst underpayment measured in S-17 is 3 wei. 
+
+### 6.2 Liquidation
+- **L1** Anyone may liquidate a Trove with ICR < MCR, given a `Valid` price, while the branch is live. A zero-debt Trove is not liquidatable. (F)
+- **L2** Waterfall: offset against the Stability Pool at ≤ 5 % premium; remainder redistributed to active Troves at ≤ 10 % premium; if no recipient exists, remainder → `badDebt` + `badDebtColl` and the branch shuts down. Premiums are caps: an under-water Trove hands over everything it has. (S-08, S-10)
+- **L3** Liquidator receives 0.5 % of collateral (cap 2 ETH) from the whole collateral, plus the Trove's gas deposit. Surplus after full settlement goes to the owner (`surplus`), claimable any time. (S-10, S-27)
+
+### 6.3 Redistribution
+- **L4** Accumulators `L_coll`, `L_debt` at `L_PRECISION = 1e36` with carried remainders; corrected stakes and system snapshots so that interaction order cannot shift shares. (S-10; no mutant yet targets the accumulators themselves)
+
+### 6.4 Bad debt (live)
+- **L5** Three distinct situations:
+  1. *Live branch, bucket non-empty*: `badDebt` and `badDebtColl` fall together; claims are pro rata; the last claimant takes the remainder; no ownerless
+     collateral remains (I-19). (S-08, M-4 payout capped at face value)
+  2. *Live branch, dust bad debt with an empty bucket* (only from B5): a burn extinguishes debt and pays nothing; nothing can ever be recovered against it,
+     so this — and only this — is a donation. (S-08)
+  3. *After a shutdown*: an empty pot at the end of phase 1 is NOT final. A burn still registers claim units (`units_of`), and those units receive every
+     later recovery alike (X7–X9). Calling such a burn a donation would re-create the earlier bug. (S-29, M-40)
+
+### 6.5 Shutdown
+- **L6** Triggers, and nothing else: `TCR < SCR` with a `Valid` price; a credible oracle failure (§7); recorded bad debt. Recorded only by non-reverting paths (`pokeOracle`, `triggerShutdown`, liquidation, redemption). Permanent. (S-02, S-15, S-20)
+- **L7** Effects: no new risk (B8 fails); interest stops (B3); Stability Pool deposits close (M-9), withdrawals stay open; `repay`, `addColl`, `closeTrove`, `liquidate`, redemption against this branch all stop; the branch enters §9. (S-02, S-16, M-33)
+
+## 7. Price oracle
+
+- **O1** One `IPriceFeed` per branch, fixed at creation; the protocol cannot replace it. The branch's own pool is never read. (deployment, S-26)
+- **O2** Status order: `NetworkUnstable` (sequencer down or within the grace period) → `PriceInvalid` (stale, non-positive, future-dated, unreadable, or composite parts too far apart) → `Failed` → `Valid`. (S-20 a–i, fuzz_oracle F1–F9, M-12, M-13, M-14)
+- **O3** `Failed` only with the sequencer continuously up for the whole timeout, and either a readable answer older than the timeout or malformed answers observed a timeout apart with no healthy observation between. A flapping sequencer postpones `Failed`. (S-20, M-11, M-15)
+- **O4** Price-dependent borrower operations revert on any status but `Valid` and never record a shutdown; the marker `invalidSince` survives only in non-reverting transactions. (S-20 d)
+- **O5** Gas stipend: each feed has an immutable `FEED_GAS_LIMIT`; before the read the transaction proves `gasleft ≥ (stipend + overhead) × 64/63 + buffer`; the read is a low-level `staticcall` copying exactly 64 bytes. Assumptions: stipend above the feed's true cost (measured on a fork, **[open]**), adapter returns the 64-byte shape. A provider swapping in a costlier aggregator can turn the stipend into a detected failure; the only remedy is a new deployment. (S-20 e/f, Foundry `test_e`, `test_f`)
+- **O6** After a `Failed` shutdown all later prices are `lastGoodPrice`. (S-15a)
+
+## 8. Revenue
+
+- **V1** Every minted interest amount `p` (step A) and every upfront fee is split: `fePart = ceil(p × 3 %)` → FrontendRegistry (credited at source per Trove, funding rounded up, credits rounded down, always solvent; M-3 rounds it down); `spPart = floor(p × 72 %)` → Stability Pool if SP3 allows, else escrow; remainder → escrow. (S-03, S-04, S-05)
+- **V2** Frontends: register with a payout address and a kickback rate that can only rise; a Trove is tagged at opening; self-referral is a 3 % rebate. (S-05 `frontend_long_untouched`, S-13 `extra_checks`)
+- **V3** The escrow makes no calls. `route_revenue(system)` is permissionless, takes no destination, and moves the escrow balance to the staking contract fixed once at deployment (`fix_staking_destination`, refuses a second call). (S-21, M-28)
+
+### 8.2 DARLI staking
+- **V4** Fixed supply, no vote, no power. Stakers receive hand-overs pro rata to stake. Fixed weekly epochs: what is handed over in epoch k is streamed second by second over epoch k + 1 at a rate fixed at the boundary; a later hand-over never touches an earlier schedule; time with no stake rolls into the next epoch. Stake and unstake make no external call; earned rewards stay claimable after unstaking. (S-04, S-24, M-28, M-29)
+- **V5** What is claimable is not what is withdrawn; rounding dust < 1e-6 token per epoch. (S-24)
+- **V6** The liquidity vault (peripheral, outside the core) accounts swap fees per token and any reward tokens paid into it with the same fixed-epoch stream; a just-in-time entrant earns only its seconds; time with no shares rolls forward. (S-19)
+
+## 9. Settlement after a shutdown
+
+### 9.1 Reference price
+- **X1** `settlePrice` is fixed once: the `Valid` price at shutdown, or `lastGoodPrice` after an oracle failure; if no definite status exists at shutdown, fixed at the first settlement. Later market moves change nothing. (S-02, S-15a, S-23, M-31)
+
+### 9.2 Phase 1: settle every Trove
+- **X2** `settleTrove(tid)` is permissionless and does constant work: touch the Trove (pending redistribution applied, interest already stopped), `need = ceil(debt × WAD / settlePrice)`, `contribution = min(coll, need)`, `gross = coll − contribution`. Then `badDebt += debt`, `badDebtColl += contribution`, `parTotal += need`, `contribTotal += contribution`; `gross_of[owner] += gross`, `settleSurplusPool += gross`, `settleSurplusGross += gross`, `settleShortTotal += need − contribution`; `unsettled −= 1`. The caller receives the Trove's remaining gas deposit (M-36). No step scans the set of Troves (an open-Trove counter `n_open` replaces every scan). (S-22, S-23, S-27a, M-37)
+- **X3** `settleTroves(tids)` settles ≤ 50 in one call. (S-27a)
+- **X4** Nothing is paid to any holder while `unsettled > 0`. (S-22, F, M-30)
+
+### 9.3 Completion
+- **X5** After `WRITE_OFF_DELAY` (30 days) anyone may `writeOff(tid)` an unsettled Trove, for half its gas deposit: `badDebt += debt`, `parTotal += need`, `settleShortTotal += need`, `unsettled −= 1`; the Trove's debt leaves the Trove ledger and `aggDebt` is unchanged. Settling it before phase 1 ends reverses the write-off. (S-27b, S-29-5, M-34)
+- **X6** Phase 1 ends when `unsettled == 0`: `take = min(settleShortTotal, settleSurplusGross)`, `badDebtColl += take`, `settleSurplusPool −= take`, `keep = (G − take) / G` (`L_PRECISION`), `claimUnits = badDebt`. (S-23, S-28, M-38 the rejected vault-parity rule)
+- **X7** Late settlement of a written-off Trove recomputes `contribTotal`, `settleShortTotal`, `settleSurplusGross`, `take`, `keep`; holders receive `pot' − pot` through `latePerUnit` (every claim unit alike, exercised or not); the rest of the Trove's collateral goes to the surplus pool. Proof of exact conservation and of `pot' − pot ≥ 0` in `RESULTS.md`. (S-27b, S-29, S-30, M-35, M-39)
+- **[open]** Real gas of X2/X3 on Base; behaviour when the shared parts (`_touch`, `_settlePrice`) revert persistently; a written-off Trove that can never be settled keeps its own collateral stuck; the deposit amount.
+
+### 9.4 Phase 2: claims
+- **X8** `redeemBadDebtColl(R)` after phase 1: burns `R`, registers `units_of[who] += R` **even when the pot is empty**, pays `floor(badDebtColl × R / badDebt)` (or all if `R == badDebt`) plus any late share due. `repayBadDebt` is the same with an empty pot. (S-08, S-29-1/2, M-40)
+- **X9** Late share: `floor(units_of × latePerUnit / L_PRECISION) − latePaid`. (S-27b, S-29)
+- **X10** Rounding: each claim leaves < 1 wei in the pot; a later pay-out moves by at most one wei per earlier claim; splitting a claim into k parts loses ≤ k wei. (S-27c)
+
+### 9.5 Borrowers' surplus
+- **X11** Claimable only after phase 1: `floor(gross_of × keep) − surplusPaidAmt`. Both factors are non-decreasing along every allowed path, so the time of claiming cannot change the total. Every healthy borrower gives up the same fraction of his surplus (`1 − keep`). (S-23, S-28, S-30, M-32, M-41)
+- **X12** Path independence: 32 specified combinations (owners, deposits, recovery timing, claim timing, empty pot) end within 6 wei of an independent rational computation. Evidence over those combinations, not a proof over all paths. (S-30)
+
+## 10. Deployment
+
+- **D1** One transaction: create the token; `sealMinters(branches)`; `fix_staking_destination(staking)`; initialise the canonical USDarli/quote pool in Uniswap v4 at `sqrtPrice` for par (decimals handled: 6 or 18, either token ordering), `hooks = 0`; bind the fixed-range vault to that key; mark deployed. Cannot run twice. (S-26, Foundry `DarliDeployer.t.sol`)
+- **D2** The pool race: the token's address is predictable and v4 lets anyone initialise any key, so deployment must not depend on winning. If `initialize` fails, the pool must demonstrably exist (price read from the PoolManager, **layout to be confirmed on a fork [open]**); otherwise the deployment reverts. Target and observed prices are recorded separately. (S-26, Foundry `test_poolRace_realPredictedAddress`, `test_unrelatedInitialiseFailure_revertsInsteadOfFalseSuccess`)
+- **D3** The core never holds a reference to Uniswap, the pool or the vault. (S-26)
+- **D4** The vault refuses deposits while the pool price is outside its fixed range, and each depositor states his own accepted price bounds. This is not protection against manipulation inside the band. Token amounts and real position maths are not modelled **[open]**. (S-26)
+
+## 10.5 Preconditions and boundaries (implementation contract)
+
+The Python model does not define contract boundaries; the following is the contract for the Solidity implementation and is **not yet tested anywhere**.
+- Trove mutation (`borrow`, `withdrawColl`, `adjust`, `adjustRate`, `close`, `transfer`) only by the NFT owner or an approved operator; `repay` and
+  `addColl` by anyone; `liquidate`, `redeem`, `settleTrove`, `writeOff`, `routeRevenue`, `pokeOracle`, `triggerShutdown`, claims of surplus and late shares:
+  permissionless.
+- Amount validation: zero amounts revert; collateral and debt inputs are 18-decimal normalised; a redemption request above the redeemer's balance reverts.
+- Internal functions (`_stepA`, `_touch`, `_redistribute`, `_endPhaseOne`, `_lateRecovery`, `_payGasDeposit`, `_sweepDustIfEmpty`) are never externally callable.
+- Every external entry point runs the reentrancy guard; the only external calls the core makes are the collateral token, the price feed (staticcall with a
+  stipend) and the stablecoin; the revenue hand-over transfers to a fixed address and makes no call into it.
+
+## 11. What is checked where
+
+**Checked in `check_invariants`, before and after every fuzzer step:** I-1 supply = Σ aggDebt · I-2 debt identity with ε ≥ 0 · I-3 aggW = 0 after shutdown ·
+I-4 vault accounting (B12) · I-5 Stability Pool solvency (balances cover compounded deposits and gains; NOT the per-depositor exactness) · I-17 escrow
+and frontend registry totals · I-19 no ownerless `badDebtColl` · I-20 named pools ≥ 0 · I-21 gasPool = Σ per-Trove · I-22 reward ≤ deposit.
+
+**Checked by the fuzzer loop itself, every step:** staking contract covers its liabilities; nobody paid during settlement phase 1 (pot and claims only grow
+while Troves are unsettled); late and surplus entitlements ≤ their pools.
+
+**Checked inside the operation, not as a separate step:** I-8, an ordinary redemption never lowers the ICR of a Trove above 100 % (asserted by
+cross-multiplication inside `redeem_from_branch`).
+
+**Checked only by dedicated scenarios:** per-depositor Stability Pool exactness against a rational shadow (S-17); settlement path independence against an
+independent computation (S-30); the oracle properties F1–F9 (`fuzz_oracle.py`).
+
+**On B9.** `repay`, `addColl` and `closeTrove` do revert on their own preconditions (insufficient balance, a Trove that is not open, an amount that would leave dust, closing without enough USDarli). The rule that holds is: **given their preconditions, these operations depend on no oracle price, no administrative permission and no optional callback into user code, and nothing in the protocol can switch them off while the branch is live; caller authorisation and the specified token transfers are part of the operations.** The fuzzer checks it in the only form that is checkable: it never observes a revert of these operations
+whose message is a price, status or permission message.
+
+## 12. Conformance map
+
+| Area | Scenarios | Mutants (all killed) | Fuzzer |
+| --- | --- | --- | --- |
+| Interest ledgers, fees, gates, minimum debt | 01–06, 11, 13, 15, 16 | M1, M2, M3 | yes |
+| Stability Pool | 03, 04, 07, 17 | M5, M8, M9 | yes |
+| Liquidation, redistribution, bad debt | 08, 10, 18 | M4 | yes |
+| Redemption | 12, 14, 15, 25 | M6 | yes |
+| Debt cap | 09, 10 | M25–M27 | partly |
+| Oracle | 20 | M11–M15 | fuzz_oracle F1–F9 |
+| Revenue, frontends, staking, vault streams | 03, 04, 05, 13, 19, 21, 24 | M23, M28, M29 | yes (route, stake, claim) |
+| Settlement | 02, 15a, 16, 22, 23, 27–30 | M30–M42 | yes (settle, write-off, late, claims); the accounting fuzzer kills M30 and M42 on its own; the others are killed by scenarios |
+| Deployment | 26 | — | — (Foundry) |
+| Not modelled | sorted list and hints, batch managers, LST pricing, ParameterStore, Uniswap position maths, zappers, real gas | | |
+
+## 13. Open items before implementation
+
+1. β. 2. Gas deposit amount. 3. Fixed values of `FEED_GAS_LIMIT` and oracle thresholds from a fork test. 4. PoolManager storage layout for the post-initialise check. 5. Vault quote asset, range and position maths. 6. DARLI supply and distribution. 7. Persistent failure in shared settlement parts. 8. Legal review before any deployment.

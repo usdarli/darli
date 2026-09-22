@@ -1,0 +1,43 @@
+name: ci
+on: [push, pull_request]
+# Actions are pinned to full commit SHAs (resolved from GitHub on 2026-09-22); the version comment is the tag they were resolved from.
+jobs:
+  model:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: "3.12" }
+      - name: scenarios, simulator, fuzzers
+        run: |
+          cd model
+          python3 test_scenarios.py
+          python3 test_econ_sim.py
+          python3 fuzz.py 10 200
+          python3 fuzz_oracle.py 50 100
+      - name: specification mapping and results manifest
+        run: |
+          cd model
+          python3 spec_check.py
+          python3 check_manifest.py
+  mutants:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: "3.12" }
+      - name: every mutant must be killed (exit 1 on a survivor, an invalid mutant, or an empty run)
+        run: cd model && python3 mutants.py
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: { submodules: recursive }
+      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1
+        with: { version: v1.5.1 }
+      - name: differential vectors must be reproducible from the model
+        run: |
+          cd contracts
+          python3 script/export_vectors.py ../model
+          git diff --exit-code -- test/vectors
+      - run: cd contracts && forge test -vv
