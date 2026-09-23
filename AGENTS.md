@@ -21,10 +21,14 @@ A disagreement between any two of them is an open issue, never something to reso
 - **Never read a price from the protocol's own pool**, and never make the core depend on Uniswap, the vault or any hook. The core's only external calls are the collateral token, the price feed and the stablecoin.
 - **Never make a risk-reducing action depend on a price, an administrative permission or a callback into user code**: `repay`, `addColl`, `closeTrove`, Stability Pool withdrawal, `claimSurplus`, `settleTrove`. Ownership checks on the caller's own Trove and the token transfers themselves are of course required; what is forbidden is any dependency on a price feed, a governance switch, or a call whose failure a third party can cause.
 - **Never add a scan over all Troves** in any path reachable after a shutdown. Settlement is constant work per Trove by design (`n_open` counter, batches of 50).
-- **Do not type numbers into documents.** Every figure quoted in a document comes from `docs/RESULTS.md`, and every figure
-  in `docs/RESULTS.md` is recorded by the run that computes it (`fig()` in `model/figures.py`) and checked by
-  `check_figures.py`. Record the figure at the line that computes it; never write the value into the document. The
-  manifest additionally hashes every file the results depend on, `contracts/` and the pinned submodules included.
+- **Do not type measured numbers into documents.** A number that comes out of a run -- a test, a fuzzer, a simulation, a
+  count -- appears in `docs/RESULTS.md` or `docs/WHITEPAPER.md` only through a `<!-- fig:NAME -->` marker, recorded by the
+  run that computes it (`fig()` in `model/figures.py`) and checked by `check_figures.py`. Record the figure at the line
+  that computes it; never write the value into the document. Deployment constants come from `docs/SPEC.md` §2, and a
+  worked example computes from inputs it states; neither is a measurement, but a worked example must be recomputed when
+  a constant it uses changes. A number from a study that is not in the repository is not quoted at all: say what the
+  study concluded, say that it is not in the package, and list it in `docs/RESULTS.md`. The manifest additionally hashes
+  every file the results depend on, `contracts/` and the pinned submodules included.
 - **Never lower a coverage floor to make a run pass.** `MIN_COVERAGE` in `fuzz.py` states how often each operation must
   actually succeed. A count that has fallen means a path became unreachable, and that is the finding, not the obstacle.
 - **Rounding direction is a rule**: the protocol rounds up when it mints and down when it pays. Every deviation must be documented at the rule that causes it.

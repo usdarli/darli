@@ -2,7 +2,7 @@
 
 Done by the repository owner, in order, before a version is announced.
 
-1. `make check` green on the release commit. It is the whole gate: the scenarios, the simulator, both fuzzers at the recorded budget with their coverage floors, every mutant, `spec_check`, `check_manifest`, `check_figures`, `forge fmt --check`, the differential vectors and `forge test`; it ends by requiring `git diff --exit-code` on `model/results/figures.json` and `docs/RESULTS.md`, so the record was regenerated rather than edited.
+1. `make check` green on the release commit. It is the whole gate: the scenarios, the simulator, both fuzzers at the recorded budget with their coverage floors, every mutant, `spec_check`, `check_manifest`, `check_figures`, `forge fmt --check`, the differential vectors and `forge test`; it ends by requiring `git diff --exit-code` on `model/results/figures.json`, `docs/RESULTS.md` and `docs/WHITEPAPER.md`, so the record and the paper were regenerated rather than edited.
 2. `git submodule update --init --recursive` first, or `make check` cannot compile the contracts.
 3. `docs/RESULTS.md`: the run record names the release commit, the date and the tool versions; the manifest and the figures were **regenerated** after the last edit (`check_manifest.py --write`, `check_figures.py --write`), never typed.
 4. CI green on the release commit on GitHub (`.github/workflows/ci.yml`; actions pinned to full SHAs, Foundry pinned to a release).

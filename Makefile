@@ -37,14 +37,16 @@ evidence:
 	cd model && $(PY) fuzz_oracle.py 200 150
 	cd model && $(PY) mutants.py
 	cd contracts && $(PY) script/export_vectors.py ../model
+	cd model && $(PY) study_figures.py
 	cd model && $(PY) spec_check.py
 	cd model && $(PY) check_figures.py
 	cd model && $(PY) check_manifest.py
-	git diff --exit-code -- model/results/figures.json docs/RESULTS.md
+	git diff --exit-code -- model/results/figures.json docs/RESULTS.md docs/WHITEPAPER.md
 
 record:
 	cd model && $(PY) test_scenarios.py && $(PY) test_econ_sim.py && $(PY) fuzz.py 30 300 && $(PY) fuzz_oracle.py 200 150 && $(PY) mutants.py
 	cd contracts && $(PY) script/export_vectors.py ../model
+	cd model && $(PY) study_figures.py
 	cd model && $(PY) check_figures.py --write
 	cd model && $(PY) check_manifest.py --write
 	@echo "regenerated: read the diff before committing it"

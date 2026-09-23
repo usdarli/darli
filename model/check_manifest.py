@@ -23,7 +23,7 @@ RESULTS = "../docs/RESULTS.md"
 REQUIRED = [
     "model/model.py", "model/econ_sim.py", "model/test_scenarios.py", "model/test_econ_sim.py", "model/fuzz.py",
     "model/fuzz_oracle.py", "model/mutants.py", "model/pilot_sweep.py", "model/beta_pilot_compare.py",
-    "model/figures.py", "model/check_figures.py", "model/spec_check.py", "model/check_manifest.py",
+    "model/figures.py", "model/check_figures.py", "model/spec_check.py", "model/check_manifest.py", "model/study_figures.py",
     "model/results/pilot_seeds.jsonl", "model/results/pilot_summary.jsonl", "model/results/beta_pilot_compare.jsonl",
     "model/results/figures.json",
     "docs/SPEC.md",

@@ -18,6 +18,7 @@ Figures are grouped by producer, because producers run separately and each rewri
     fuzz_oracle   python3 fuzz_oracle.py 200 150  (likewise)
     mutants       python3 mutants.py              (the whole set)
     contracts     python3 contracts/script/export_vectors.py model   (vector counts, declared Foundry tests)
+    studies       python3 study_figures.py        (tables and figures from the committed pilot and beta studies)
 """
 import json
 import os

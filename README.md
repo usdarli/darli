@@ -8,7 +8,7 @@ An immutable, ETH-backed stablecoin protocol for Base: borrowers set their own i
 | --- | --- |
 | `docs/SPEC.md` | The normative specification: decisions in force, deployment constants, every rule with the test that pins it, open items |
 | `docs/WHITEPAPER.md` | The public whitepaper |
-| `docs/RESULTS.md` | Results of record: a hash manifest and the figures themselves, each recorded by the run that computes it and checked by `check_figures.py`. Every number in the documents comes from here, and none of them is typed in |
+| `docs/RESULTS.md` | Results of record: a hash manifest and the figures themselves, each recorded by the run that computes it and checked by `check_figures.py`. Every measured number in this file and in the whitepaper is generated, none is typed in, and the studies the whitepaper cites without reproducing are listed |
 | `model/` | Executable reference model (Python, standard library only, exact integer arithmetic): 30 scenarios, two fuzzers with asserted coverage floors, 32 mutants, an agent-based simulator |
 | `RELEASING.md` | Release checklist: what must be green, enabled and decided before a version is announced |
 | `AGENTS.md` | Operating rules for AI coding agents and contributors: what must never change, how a rule change is made, what looks like a bug but is not |
