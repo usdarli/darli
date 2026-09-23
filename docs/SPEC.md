@@ -96,7 +96,7 @@ A Trove is an NFT with `coll`, `recordedDebt`, `annualRate`, `stake`, redistribu
 ## 5. Redemption (live branch)
 
 - **R1** Anyone may redeem USDarli for collateral worth one unit of reference currency per token, minus the fee, whenever the branch has a `Valid` price and `TCR ≥ SCR`. Nobody can switch it off; it stops by itself without a valid price and is replaced by settlement after a shutdown. (S-14 `redemption_routing`, S-16)
-- **R2** Order: lowest `annualRate` first. A Trove left below the minimum becomes a Zombie and leaves the queue; one partially redeemed Zombie (`lastZombieTroveId`) is redeemed first next time. (S-15 (c) zombies, S-12 `end_of_life`)
+- **R2** Order: lowest `annualRate` first; among equal rates, the lower Trove id first. (rate, id) is a total order, so the queue is determined by the set of Active Troves alone: insertion hints change the gas of an insertion, never its place, and removal needs neither a hint nor a walk. A Trove left below the minimum becomes a Zombie and leaves the queue; one partially redeemed Zombie (`lastZombieTroveId`) is redeemed first next time. (S-15 (c) zombies, S-12 `end_of_life`, S-31, M-43 ties by the higher id, Foundry `test_diff_redemptionOrderMatchesModel`, `test_tiesAreBrokenByTroveId`, `testFuzz_hintsNeverChangeThePosition`, `invariant_orderIsCanonical`, `test_exactHintsCostTheSameAtAnySize`)
 - **R3** Across branches: split in proportion to each branch's debt not covered by its Stability Pool, truncated to that uncovered total, shares computed with a running remainder. (S-14 `redemption_routing`)
 - **R4** Two prices: `price` decides redeemability (ICR ≥ 100 %); `redemptionPrice` (conservative) converts debt to collateral. An ordinary redemption never lowers the ICR of a Trove above 100 %. (I-8)
 
@@ -191,13 +191,16 @@ A Trove is an NFT with `coll`, `recordedDebt`, `annualRate`, `stake`, redistribu
 
 ## 10.5 Preconditions and boundaries (implementation contract)
 
-The Python model does not define contract boundaries; the following is the contract for the Solidity implementation and is **not yet tested anywhere**.
+The Python model does not define contract boundaries; the following is the contract for the Solidity implementation and is **not yet tested anywhere** unless a bullet names its test.
 - Trove mutation (`borrow`, `withdrawColl`, `adjust`, `adjustRate`, `close`, `transfer`) only by the NFT owner or an approved operator; `repay` and
   `addColl` by anyone; `liquidate`, `redeem`, `settleTrove`, `writeOff`, `routeRevenue`, `pokeOracle`, `triggerShutdown`, claims of surplus and late shares:
   permissionless.
 - Amount validation: zero amounts revert; collateral and debt inputs are 18-decimal normalised; a redemption request above the redeemer's balance reverts.
 - Burning: a branch burns USDarli only from the account that initiated the operation, or from the protocol's own accounts (the Stability Pool). `StableToken.burn` cannot check this (T1); the branches must, and their tests must show it.
 - Internal functions (`_stepA`, `_touch`, `_redistribute`, `_endPhaseOne`, `_lateRecovery`, `_payGasDeposit`, `_sweepDustIfEmpty`) are never externally callable.
+- The redemption queue (`RateSortedList`) is changed only by its branch, fixed at construction, and makes no external call (Foundry
+  `test_onlyTheBranchCanChangeTheList`, `test_constructorRejectsZeroBranch`). That it holds exactly the branch's Active Troves is the branch's duty and is
+  not yet tested.
 - Every external entry point runs the reentrancy guard; the only external calls the core makes are the collateral token, the price feed (staticcall with a
   stipend) and the stablecoin; the revenue hand-over transfers to a fixed address and makes no call into it.
 
@@ -225,7 +228,7 @@ whose message is a price, status or permission message.
 ## 12. Conformance map
 
 "Fuzzer: yes" below means the operation is executed under a coverage floor, **not** that the fuzzer would catch a wrong result: the fuzzers check invariants,
-not behaviour. The honest measure is how many of the 32 mutants a random tester kills with no scenario at all, and that number is recorded in `docs/RESULTS.md`
+not behaviour. The honest measure is how many of the mutants a random tester kills with no scenario at all, and that number is recorded in `docs/RESULTS.md`
 ("What the random testers kill on their own") rather than asserted here.
 
 | Area | Scenarios | Mutants (all killed) | Fuzzer |
@@ -233,13 +236,13 @@ not behaviour. The honest measure is how many of the 32 mutants a random tester 
 | Interest ledgers, fees, gates, minimum debt | 01–06, 11, 13, 15, 16 | M1, M2, M3 | yes |
 | Stability Pool | 03, 04, 07, 17 | M5, M8, M9 | yes |
 | Liquidation, redistribution, bad debt | 08, 10, 18 | M4 | yes: `liq` and `bad_debt` carry coverage floors, reached through the guided `crash` operation |
-| Redemption | 12, 14, 15, 25 | M6 | yes |
+| Redemption | 12, 14, 15, 25, 31 | M6, M43 | yes; the queue order also against `RateSortedList` (Foundry) |
 | Debt cap | 09, 10 | M25–M27 | partly |
 | Oracle | 20 | M11–M15 | fuzz_oracle F1–F9 |
 | Revenue, frontends, staking, vault streams | 03, 04, 05, 13, 19, 21, 24 | M23, M28, M29 | yes (route, stake, claim) |
 | Settlement | 02, 15a, 16, 22, 23, 27–30 | M30–M42 | yes: `urgent` (settle/write-off), `late` and `claim_late` all carry coverage floors |
 | Deployment | 26 | — | — (Foundry) |
-| Not modelled | sorted list and hints, batch managers, LST pricing, ParameterStore, Uniswap position maths, zappers, real gas | | |
+| Not modelled | batch managers, LST pricing, ParameterStore, Uniswap position maths, zappers, real gas | | |
 
 ## 13. Open items before implementation
 

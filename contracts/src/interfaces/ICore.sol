@@ -40,15 +40,27 @@ interface IInitiative {
     function notifyReward(uint256 amount) external;
 }
 
+/// The redemption queue of one branch (SPEC R2): Active Troves in a doubly linked list, head = highest (rate, id), tail =
+/// lowest. Redemption walks `last()` then `prev()`, i.e. lowest rate first and, among equal rates, the lower id first.
+/// (rate, id) is a total order, so the list has exactly one valid state for a given set: hints decide only the gas.
 interface IRateSortedList {
+    /// @notice only the branch. Reverts if `id` is 0 or already listed. Any hints are accepted; exact ones cost O(1).
     function insert(uint256 id, uint256 annualRate, uint256 prevHint, uint256 nextHint) external;
+    /// @notice only the branch. O(1): no walk, no hint.
     function remove(uint256 id) external;
+    /// @notice only the branch. `remove` then `insert`.
     function reinsert(uint256 id, uint256 newRate, uint256 prevHint, uint256 nextHint) external;
-    function findInsertPosition(uint256 annualRate, uint256 prevHint, uint256 nextHint)
+    /// @notice the neighbours `id` would have at `annualRate`: prevId nearer the head (ranks higher), nextId nearer the
+    ///         tail. For a listed `id`, the answer describes the list as it stands, `id` included.
+    function findInsertPosition(uint256 id, uint256 annualRate, uint256 prevHint, uint256 nextHint)
         external
         view
-        returns (uint256 prev, uint256 next);
+        returns (uint256 prevId, uint256 nextId);
+    function first() external view returns (uint256);
     function last() external view returns (uint256);
+    function next(uint256 id) external view returns (uint256);
     function prev(uint256 id) external view returns (uint256);
     function size() external view returns (uint256);
+    function contains(uint256 id) external view returns (bool);
+    function rateOf(uint256 id) external view returns (uint256);
 }

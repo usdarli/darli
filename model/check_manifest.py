@@ -29,7 +29,7 @@ REQUIRED = [
     "docs/SPEC.md",
     "contracts/foundry.toml", "contracts/remappings.txt", "contracts/script/export_vectors.py",
     "contracts/script/check_test_count.py",
-    "contracts/test/vectors/math.json",
+    "contracts/test/vectors/math.json", "contracts/test/vectors/sorted_list.json",
 ]
 SUBMODULES = ["contracts/lib/forge-std", "contracts/lib/openzeppelin-contracts"]
 

@@ -11,5 +11,10 @@ fs_permissions = [{ access = "read", path = "./test/vectors" }]
 [fuzz]
 runs = 512
 
+[invariant]
+runs = 128
+depth = 100
+fail_on_revert = true # the handlers only make calls the contract must accept: any revert is a finding
+
 [lint]
 lint_on_build = false

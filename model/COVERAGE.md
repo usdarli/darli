@@ -16,14 +16,14 @@ conformance map claimed fuzzer coverage of both. Floors are enforced only at or 
 it is a smoke run. Never lower a floor to make a run pass: a fallen count means a path became unreachable, and that is the finding.
 
 ## Mutants
-32 mutants, all killed, none invalid. The split between what the scenarios pin and what the random testers find on their own is a **recorded figure**, not a
+Every mutant is killed and none is invalid; the counts are recorded figures in `docs/RESULTS.md`. The split between what the scenarios pin and what the random testers find on their own is a **recorded figure**, not a
 claim: see "What the random testers kill on their own" in `docs/RESULTS.md`. `python3 mutants.py` prints the attribution per mutant.
 
 ## Checked by dedicated scenarios
 per-depositor Stability Pool exactness against a rational shadow (17) · settlement order independence, every permutation (22) · settlement path independence,
 32 combinations against an independent computation (30) · completion of settlement with 1,500 Troves and a never-settled Trove (27) · late-recovery ownership (29) ·
-oracle failure detection (20) and `fuzz_oracle.py` F1–F9 · one-shot deployment and the pool race (26) · fixed-epoch reward streams (04, 19, 24).
+oracle failure detection (20) and `fuzz_oracle.py` F1–F9 · redemption order with tied rates, expected queues written by hand (31) · one-shot deployment and the pool race (26) · fixed-epoch reward streams (04, 19, 24).
 
 ## Not modelled
-sorted list and insertion hints · batch managers · LST pricing · real gas · Uniswap position maths and token amounts · zappers · a persistent revert inside the
+batch managers · LST pricing · real gas · Uniswap position maths and token amounts · zappers · a persistent revert inside the
 parts shared by settlement and write-off · calibrated agent behaviour in the simulator.

@@ -1424,6 +1424,33 @@ def scenario_30_settlement_path_independence():
             f" {fig('path_tolerance_wei', 6)} wei of the independent computation; no residue, every deposit paid exactly once")
 
 
+def scenario_31_redemption_order_is_total():
+    """SPEC R2: lowest rate first, and among equal rates the LOWER Trove id first. The tie rule makes the order a total
+    order, so the sorted list of the contracts has exactly one valid state for a given set of Troves, whatever hints it was
+    given. The expected sequences are written out by hand from the rule, not computed by the model's own sort."""
+    clock, s, b, weth, feed = setup()
+    rates = {1: 3 * PCT, 2: 1 * PCT, 3: 2 * PCT, 4: 1 * PCT, 5: 1 * PCT}
+    for tid, rate in rates.items():
+        fund(weth, f"o{tid}", 100 * E)
+        assert b.open_trove(f"o{tid}", 100 * E, 3_000 * E, rate) == tid
+    assert [t.id for t in b.redemption_order()] == [2, 4, 5, 3, 1], "ties must be broken by the lower Trove id"
+    # a Trove that moves ONTO an existing rate takes its place by id, not at the back of that rate
+    b.adjust_rate(1, 1 * PCT)
+    expected = [1, 2, 4, 5, 3]
+    assert [t.id for t in b.redemption_order()] == expected, "a rate change must not decide the Trove's place among ties"
+    for tid in rates:
+        s.stable.transfer(f"o{tid}", "r", s.stable.bal[f"o{tid}"])
+    give_stable(s, b, weth, "r", 2_000 * E)              # the upfront fees: a helper Trove at 5 %, behind all of the above
+    # and the redemption really walks that order: one iteration, exactly one Trove's debt, each time the next one
+    for tid in expected:
+        before = {t.id: b.debt_now(t) for t in b.open_troves()}
+        red, _ = s.redeem("r", before[tid], max_iter=1)
+        assert red == before[tid] and b.debt_now(b.troves[tid]) == 0, f"Trove {tid} was not the one redeemed"
+        assert all(b.debt_now(b.troves[i]) == d for i, d in before.items() if i != tid), "a Trove out of turn was touched"
+        check_invariants(s, f"31 after {tid}")
+    return f"order {expected} after Trove 1 moved onto the lowest rate; redemption walked it Trove by Trove"
+
+
 SCENARIOS = [v for k, v in sorted(globals().items()) if k.startswith("scenario_")]
 
 if __name__ == "__main__":
