@@ -31,16 +31,12 @@ A disagreement between any two of them is an open issue, never something to reso
 
 ## 3. Before you change anything
 
-    cd model
-    python3 test_scenarios.py          # must print 30/30 (or more)
-    python3 test_econ_sim.py
-    python3 fuzz.py 10 200             # smoke; the coverage floors are only enforced at 30 300 and above
-    python3 fuzz_oracle.py 50 100
-    python3 spec_check.py              # every scenario cited in SPEC.md exists and every scenario is cited
-    python3 check_manifest.py          # the manifest matches the files and the pinned submodules
-    python3 check_figures.py           # every figure in docs/RESULTS.md matches the run that produced it
-    python3 mutants.py                 # all mutants killed, none invalid (slow; CI runs it)
-    cd ../contracts && forge test
+    make smoke        # the fast set: scenarios, simulator, both fuzzers, spec_check, manifest, figures
+    make contracts    # forge fmt --check, differential vectors, forge test
+    make check        # everything, including the mutants and the full-budget fuzzers (slow; CI runs it)
+
+`make help` lists the targets. CI runs the same targets, so a green CI and a green `make check` mean the same thing;
+that was not true before, when CI ran the fuzzers at a tenth of the budget `RELEASING.md` required.
 
 If any of these fails before your change, stop and report; do not start from a broken baseline.
 
@@ -85,7 +81,14 @@ See `docs/SPEC.md` §13: β, the gas deposit amount, oracle stipend and threshol
 ## 7. Style
 
 - Python: standard library only; integers only in protocol arithmetic (no floats anywhere in `model.py`); `require()` for reverts; every state-changing function reachable from the fuzzer.
-- Solidity: `^0.8.26`, custom errors, no assembly except where a comment justifies it, `forge fmt`.
+- Solidity: `^0.8.26`, custom errors, no assembly except where a comment justifies it, `forge fmt --check` clean.
+- **`forge fmt` can change behaviour. Never run it and commit the result unread.** On 1.5.1 it rewrites a single-line
+  `if (c) { A; B; }` as `if (c) A;` followed by an unconditional `B;`, silently moving a statement out of the
+  conditional. It did exactly that twice in this repository: `continue` escaped an `if` inside the oracle gas sweep,
+  which reduced a documented finding from 306 poisoned gas values to 0, and `since = block.timestamp` escaped an `if`
+  in the sequencer mock, which would have made the sequencer look freshly recovered on every call. `forge test` caught
+  both. So: write multi-statement conditionals with braces on their own lines, run `make fmt` on its own commit, and
+  read the whole diff before staging it -- treat it as a code change, not a cosmetic one.
 - Tests are named for the property they check, and the assertion message says which rule failed.
 - Commit messages name the SPEC rule identifiers touched (e.g. `X7, X11: recompute late recovery totals`).
 

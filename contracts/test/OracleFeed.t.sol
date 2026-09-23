@@ -27,7 +27,9 @@ contract OracleFeedTest is Test {
         feed = new SingleSourcePriceFeed(src, seq, STALE, TIMEOUT, GRACE, 200_000, 50_000);
     }
 
-    function _status() internal returns (PriceStatus s) { (, s) = feed.fetchPrice(); }
+    function _status() internal returns (PriceStatus s) {
+        (, s) = feed.fetchPrice();
+    }
 
     // (a) an outage far longer than staleness AND timeout must never end in Failed
     function test_a_sequencerOutageDoesNotFail() public {
@@ -60,23 +62,29 @@ contract OracleFeedTest is Test {
         src.set(0, block.timestamp);
         assertEq(uint8(_status()), uint8(PriceStatus.PriceInvalid));
         assertEq(feed.invalidSince(), block.timestamp);
-        skip(TIMEOUT - 1); src.set(0, block.timestamp);
+        skip(TIMEOUT - 1);
+        src.set(0, block.timestamp);
         assertEq(uint8(_status()), uint8(PriceStatus.PriceInvalid));
         src.set(2100e18, block.timestamp);
         assertEq(uint8(_status()), uint8(PriceStatus.Valid));
         assertEq(feed.invalidSince(), 0);
         src.set(-5, block.timestamp);
         assertEq(uint8(_status()), uint8(PriceStatus.PriceInvalid));
-        skip(TIMEOUT - 1); src.set(-5, block.timestamp);
+        skip(TIMEOUT - 1);
+        src.set(-5, block.timestamp);
         assertEq(uint8(_status()), uint8(PriceStatus.PriceInvalid));
-        skip(1); src.set(-5, block.timestamp);
+        skip(1);
+        src.set(-5, block.timestamp);
         (uint256 p, PriceStatus s) = feed.fetchPrice();
         assertEq(uint8(s), uint8(PriceStatus.Failed));
         assertEq(p, 2100e18);
     }
 
     // (d) a marker written inside a reverting transaction does not survive
-    function fetchThenRevert() external { feed.fetchPrice(); revert("borrower op refused"); }
+    function fetchThenRevert() external {
+        feed.fetchPrice();
+        revert("borrower op refused");
+    }
 
     function test_d_markerDoesNotSurviveRevert() public {
         src.setMode(MockSource.Mode.Revert);
@@ -92,7 +100,9 @@ contract OracleFeedTest is Test {
         src.set(PRICE, block.timestamp);
         assertEq(uint8(_status()), uint8(PriceStatus.Valid));
         src.setMode(MockSource.Mode.ShortReturn);
-        assertEq(uint8(_status()), uint8(PriceStatus.PriceInvalid), "32 bytes instead of 64 (try/catch would NOT catch this)");
+        assertEq(
+            uint8(_status()), uint8(PriceStatus.PriceInvalid), "32 bytes instead of 64 (try/catch would NOT catch this)"
+        );
         src.setMode(MockSource.Mode.Ok);
         vm.etch(address(src), "");
         assertEq(uint8(_status()), uint8(PriceStatus.PriceInvalid), "no code at the source (try/catch would revert)");
@@ -126,10 +136,16 @@ contract OracleFeedTest is Test {
 
     /// Sweeps the gas given to fetchPrice. Returns how many calls ended in a NON-Valid observation of a healthy
     /// source (= successful griefing) and how many reverted.
-    function _sweep(address target, uint256 from, uint256 to, uint256 step) internal returns (uint256 poisoned, uint256 reverted) {
+    function _sweep(address target, uint256 from, uint256 to, uint256 step)
+        internal
+        returns (uint256 poisoned, uint256 reverted)
+    {
         for (uint256 g = from; g <= to; g += step) {
             (bool ok, bytes memory ret) = target.call{gas: g}(abi.encodeWithSignature("fetchPrice()"));
-            if (!ok) { reverted++; continue; }
+            if (!ok) {
+                reverted++;
+                continue;
+            }
             (, PriceStatus s) = abi.decode(ret, (uint256, PriceStatus));
             if (s != PriceStatus.Valid) poisoned++;
         }
@@ -142,8 +158,9 @@ contract OracleFeedTest is Test {
         IFeedSource[3] memory sources = [IFeedSource(src), IFeedSource(hungry), IFeedSource(proxy)];
         uint256[3] memory limits = [uint256(200_000), 1_300_000, 1_300_000];
         for (uint256 i = 0; i < 3; i++) {
-            SingleSourcePriceFeed f =
-                new SingleSourcePriceFeed(sources[i], ISequencerGuard(address(0)), STALE, TIMEOUT, GRACE, limits[i], 50_000);
+            SingleSourcePriceFeed f = new SingleSourcePriceFeed(
+                sources[i], ISequencerGuard(address(0)), STALE, TIMEOUT, GRACE, limits[i], 50_000
+            );
             (uint256 poisoned, uint256 reverted) = _sweep(address(f), 30_000, 1_800_000, 2_777);
             assertEq(poisoned, 0, "healthy feed observed as malformed");
             assertGt(reverted, 0, "sweep never hit the guard: test is blind");

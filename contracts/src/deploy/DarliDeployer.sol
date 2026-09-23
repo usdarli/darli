@@ -48,7 +48,15 @@ contract DarliDeployer {
     error PoolAbsentAfterInitialise();
 
     event PoolWasPreInitialised();
-    event Deployed(address stable, address currency0, address currency1, uint24 fee, int24 tickSpacing, uint160 targetSqrtPriceX96, uint160 observedSqrtPriceX96);
+    event Deployed(
+        address stable,
+        address currency0,
+        address currency1,
+        uint24 fee,
+        int24 tickSpacing,
+        uint160 targetSqrtPriceX96,
+        uint160 observedSqrtPriceX96
+    );
 
     constructor() {
         deployerEOA = msg.sender;
@@ -76,7 +84,8 @@ contract DarliDeployer {
 
         (address c0, address c1) = address(token) < quote ? (address(token), quote) : (quote, address(token));
         sqrtPriceX96 = _sqrtPriceAtPar(c0 == address(token), quoteDecimals);
-        PoolKey memory key = PoolKey({currency0: c0, currency1: c1, fee: fee, tickSpacing: tickSpacing, hooks: address(0)});
+        PoolKey memory key =
+            PoolKey({currency0: c0, currency1: c1, fee: fee, tickSpacing: tickSpacing, hooks: address(0)});
         try poolManager.initialize(key, sqrtPriceX96) {}
         catch {
             // A failed initialise means "already initialised" ONLY IF the pool demonstrably exists. Any other failure (wrong

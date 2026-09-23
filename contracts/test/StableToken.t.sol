@@ -25,13 +25,13 @@ contract StableTokenTest is Test {
         address[] memory m = new address[](1);
         m[0] = alice;
         vm.expectRevert(NotAuthorized.selector);
-        token.sealMinters(m);                                   // a stranger
+        token.sealMinters(m); // a stranger
         vm.prank(branch);
         vm.expectRevert(NotAuthorized.selector);
-        token.sealMinters(m);                                   // an existing minter
+        token.sealMinters(m); // an existing minter
         vm.prank(factory);
         vm.expectRevert(StableToken.AlreadySealed.selector);
-        token.sealMinters(m);                                   // the deployer itself, a second time
+        token.sealMinters(m); // the deployer itself, a second time
         assertTrue(token.mintersSealed());
         assertFalse(token.isMinter(alice));
     }

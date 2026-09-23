@@ -32,6 +32,8 @@ An immutable, ETH-backed stablecoin protocol for Base: borrowers set their own i
 
 ## Reproduce the evidence
 
+`make check` runs all of it and is what CI runs; `make help` lists the targets. Individually:
+
     cd model
     python3 test_scenarios.py          # 30 scenarios
     python3 fuzz.py 30 300             # accounting fuzzer: invariants before and after every step, plus a floor on how often each operation must succeed

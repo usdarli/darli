@@ -20,7 +20,10 @@ contract StableToken is ERC20Permit, IStableToken {
     error AlreadySealed();
     error NoMinters();
 
-    constructor(string memory name_, string memory symbol_, address deployer_) ERC20(name_, symbol_) ERC20Permit(name_) {
+    constructor(string memory name_, string memory symbol_, address deployer_)
+        ERC20(name_, symbol_)
+        ERC20Permit(name_)
+    {
         deployer = deployer_;
     }
 

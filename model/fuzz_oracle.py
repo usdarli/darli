@@ -1,5 +1,5 @@
 """
-Property fuzzer for oracle failure detection (`docs/SPEC.md` 7).   python3 fuzz_oracle.py [seeds] [steps]
+Property fuzzer for oracle failure detection (`docs/SPEC.md` 7).   python3 fuzz_oracle.py [seeds] [steps] [first_seed]
 Random feed behaviour, sequencer flaps, pokes with random gas, borrower ops that revert.
 Checked after every step:
   F1  Failed never while the sequencer is down / has been up for less than TIMEOUT.
@@ -120,13 +120,14 @@ def _main():
 
         seeds = int(sys.argv[1]) if len(sys.argv) > 1 else 200
         steps = int(sys.argv[2]) if len(sys.argv) > 2 else 150
+        first = int(sys.argv[3]) if len(sys.argv) > 3 else 0
         tot = {}
-        for seed in range(seeds):
+        for seed in range(first, first + seeds):
             for k, v in run(seed, steps).items():
                 tot[k] = tot.get(k, 0) + v
-        print(f"{seeds} seeds x {steps} steps: properties F1-F9 held after every step")
+        print(f"{seeds} seeds x {steps} steps from seed {first}: properties F1-F9 held after every step")
         print(tot)
-        if (seeds, steps) == (200, 150):                 # the configuration docs/RESULTS.md records
+        if (seeds, steps, first) == (200, 150, 0):       # the configuration docs/RESULTS.md records
             from figures import fig, dump
             fig("fuzz_oracle_stats", tot)
             print(f"figures: {dump('fuzz_oracle')} recorded")

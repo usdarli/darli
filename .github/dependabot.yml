@@ -1,0 +1,17 @@
+version: 2
+updates:
+  # Actions are pinned to full commit SHAs. Dependabot rewrites the SHA and the version comment together, which is the
+  # only maintainable way to keep a pinned workflow current: a human editing a 40-character hash by hand gets it wrong.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule: { interval: weekly }
+    commit-message: { prefix: "ci" }
+    open-pull-requests-limit: 3
+
+  # forge-std and openzeppelin-contracts. A bump here changes what `forge test` compiled against, so the manifest in
+  # docs/RESULTS.md records their commits and check_manifest.py fails until the record is regenerated.
+  - package-ecosystem: gitsubmodule
+    directory: "/"
+    schedule: { interval: monthly }
+    commit-message: { prefix: "deps" }
+    open-pull-requests-limit: 2
