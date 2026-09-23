@@ -5,7 +5,12 @@ import {IFeedSource, ISequencerGuard} from "../../src/interfaces/IPriceFeed.sol"
 import {PriceStatus} from "../../src/Types.sol";
 
 contract MockSource is IFeedSource {
-    enum Mode { Ok, Revert, BurnAllGas, ShortReturn }
+    enum Mode {
+        Ok,
+        Revert,
+        BurnAllGas,
+        ShortReturn
+    }
 
     int256 public value;
     uint256 public updatedAt;
@@ -18,14 +23,30 @@ contract MockSource is IFeedSource {
         burn = burn_;
     }
 
-    function set(int256 v, uint256 t) external { value = v; updatedAt = t; }
-    function push() external { updatedAt = block.timestamp; }
-    function setMode(Mode m) external { mode = m; }
+    function set(int256 v, uint256 t) external {
+        value = v;
+        updatedAt = t;
+    }
+
+    function push() external {
+        updatedAt = block.timestamp;
+    }
+
+    function setMode(Mode m) external {
+        mode = m;
+    }
 
     function read() external view returns (int256, uint256) {
         if (mode == Mode.Revert) revert("source down");
-        if (mode == Mode.BurnAllGas) { while (true) {} }
-        if (mode == Mode.ShortReturn) { assembly { mstore(0, 1) return(0, 0x20) } }
+        if (mode == Mode.BurnAllGas) while (true) {}
+        if (mode == Mode.ShortReturn) {
+            // braces are not optional here: `forge fmt` rewrites a braceless `if` with inline assembly and then
+            // reports its own output as unformatted, so `forge fmt --check` can never go green without them.
+            assembly {
+                mstore(0, 1)
+                return(0, 0x20)
+            }
+        }
         uint256 start = gasleft();
         while (start - gasleft() < burn) {}
         return (value, updatedAt);
@@ -36,16 +57,36 @@ contract MockSource is IFeedSource {
 /// which still owns ~1/64 of ITS gas and hands it back to the caller.
 contract NestedProxySource is IFeedSource {
     IFeedSource public immutable inner;
-    constructor(IFeedSource inner_) { inner = inner_; }
-    function read() external view returns (int256, uint256) { return inner.read(); }
+
+    constructor(IFeedSource inner_) {
+        inner = inner_;
+    }
+
+    function read() external view returns (int256, uint256) {
+        return inner.read();
+    }
 }
 
 contract MockSequencer is ISequencerGuard {
     bool public isUp = true;
     uint256 public since;
-    constructor() { since = block.timestamp; }
-    function set(bool up) external { if (up != isUp) { isUp = up; since = block.timestamp; } }
-    function status() external view returns (bool, uint256) { return (isUp, since); }
+
+    constructor() {
+        since = block.timestamp;
+    }
+
+    function set(bool up) external {
+        // `since` moves ONLY when the status really changes: the grace period and the failure timeout are both measured
+        // from it, so an unconditional update would silently keep the sequencer looking freshly recovered for ever.
+        if (up != isUp) {
+            isUp = up;
+            since = block.timestamp;
+        }
+    }
+
+    function status() external view returns (bool, uint256) {
+        return (isUp, since);
+    }
 }
 
 /// TEST ONLY: the "gasleft <= gasBefore/64" guard, to measure its two weaknesses on a real EVM.
@@ -55,7 +96,9 @@ contract Heuristic64Feed {
     uint256 public lastGoodPrice = 1;
     error InsufficientGasForExternalCall();
 
-    constructor(IFeedSource s) { source = s; }
+    constructor(IFeedSource s) {
+        source = s;
+    }
 
     function fetchPrice() external returns (uint256, PriceStatus) {
         uint256 gasBefore = gasleft();

@@ -4,13 +4,13 @@
     forge build && forge test -vv
     python3 script/export_vectors.py ../model      # regenerate differential vectors from the reference model
 
-Solidity 0.8.26, no proxies, custom errors, OpenZeppelin v5.1 only. 31 tests.
+Solidity 0.8.26, no proxies, custom errors, OpenZeppelin v5.1 only. Test and vector counts are in `docs/RESULTS.md`, recorded by the run rather than typed here, and `make contracts` checks that forge ran exactly the declared number.
 
 ## What is real code
 | File | Status |
 | --- | --- |
 | `src/libraries/Constants.sol` | code constants of `docs/SPEC.md` §2 |
-| `src/libraries/FixedPointMath.sol` | `mulDivDown/Up`, `ceilDiv`, `decPow`, step-A (ceil) and step-B (floor) interest — **bit-for-bit equal to `model/model.py`** on 1 228 vectors |
+| `src/libraries/FixedPointMath.sol` | `mulDivDown/Up`, `ceilDiv`, `decPow`, step-A (ceil) and step-B (floor) interest — **bit-for-bit equal to `model/model.py`** on the differential vectors, including step B over debts where `debt × rate` no longer fits in 256 bits |
 | `src/core/StableToken.sol` | ERC-20 + permit; minter set is written once by the deployer and sealed for ever (immutable system); rejects transfers to itself / zero |
 | `src/core/InterestEscrow.sol` | pull-only escrow: the core never calls out |
 | `src/oracle/SingleSourcePriceFeed.sol` | `docs/SPEC.md` §7 for one source: sequencer first, temporary `PriceInvalid`, two paths to `Failed`, **fixed gas stipend proven up front**, low-level bounded `staticcall` |

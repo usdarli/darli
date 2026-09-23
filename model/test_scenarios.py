@@ -969,6 +969,7 @@ def scenario_23_settlement_economics_and_edges():
         assert abs(Fraction(b.bad_debt_coll) - exp_rate * unclaimed) <= 3, "what is left in the pot must be exactly the unclaimed tokens' share"
         assert b.settle_surplus_pool <= 2, "only rounding dust may remain in the surplus pool"
         rate_fig = fig("holders_rate_absorb" if absorbs else "holders_rate_parity", float(exp_rate) * 1000, ".4f")
+        fig("healthy_borrower_keeps_absorb_eth" if absorbs else "healthy_borrower_keeps_parity_eth", s1 / E, ".3f")
         out.append(f"{'borrowers absorb' if absorbs else 'vault parity'}: holders {rate_fig:.4f} per token, healthy borrower keeps {s1 / E:.3f} ETH")
     # --- surplus is released only after phase 1 when it may still be needed
     s, b, weth = _settlement_state((6, 3), 2000, 1000, True)

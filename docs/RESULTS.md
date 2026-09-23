@@ -6,19 +6,19 @@ Every figure quoted in the documents comes from this file. Reproduce with the co
 
 ## Manifest — the only list of hashes in this file (sha256, first 16 hex)
 
-It covers `model/`, `docs/SPEC.md` and `contracts/`, because the run record makes claims about all three: "1,228 vectors,
-identical to the shipped file" and "forge test: 31 passed" mean nothing without knowing which Solidity sources and which
-version of OpenZeppelin produced them. Regenerate with `python3 model/check_manifest.py --write`.
+It covers `model/`, `docs/SPEC.md` and `contracts/`, because the run record makes claims about all three: the vector count
+and the forge result mean nothing without knowing which Solidity sources and which version of OpenZeppelin produced them. Regenerate with `python3 model/check_manifest.py --write`.
 
 | file | hash |
 | --- | --- |
 | contracts/foundry.toml | `a9cdfda1b8a7cf0f` |
 | contracts/remappings.txt | `79f11452d3ebfaa9` |
-| contracts/script/export_vectors.py | `c2d2527a13749eff` |
+| contracts/script/check_test_count.py | `fce577ae0f91f146` |
+| contracts/script/export_vectors.py | `61b7e4107db14cf0` |
 | contracts/src/Types.sol | `52053aad004887d7` |
 | contracts/src/core/InterestEscrow.sol | `01ec1eaffa0acde7` |
-| contracts/src/core/StableToken.sol | `707437b51a3dfbff` |
-| contracts/src/deploy/DarliDeployer.sol | `88fb4db17d89dbd4` |
+| contracts/src/core/StableToken.sol | `8cf26fe81cb2b6f8` |
+| contracts/src/deploy/DarliDeployer.sol | `08d3369ccc31c66b` |
 | contracts/src/interfaces/IBorrowerGateway.sol | `5d1d6c3efaff2bcb` |
 | contracts/src/interfaces/IBranchManager.sol | `d444a10ab1baa8e4` |
 | contracts/src/interfaces/ICore.sol | `f4827b5877795b95` |
@@ -26,33 +26,34 @@ version of OpenZeppelin produced them. Regenerate with `python3 model/check_mani
 | contracts/src/interfaces/IStabilityPool.sol | `9a19c2783f019916` |
 | contracts/src/interfaces/IStableToken.sol | `32c3ee6d5eebfec1` |
 | contracts/src/libraries/Constants.sol | `e18b80eb90c77c52` |
-| contracts/src/libraries/FixedPointMath.sol | `b11882afe37641c2` |
-| contracts/src/oracle/ChainlinkAdapters.sol | `582c1d66f048619e` |
-| contracts/src/oracle/SingleSourcePriceFeed.sol | `ea96166e284ac03d` |
-| contracts/test/DarliDeployer.t.sol | `289b0d05a0b6417a` |
-| contracts/test/FixedPointMath.t.sol | `fd8dade27e70d807` |
-| contracts/test/OracleFeed.t.sol | `38610ca55f92ec26` |
-| contracts/test/StableToken.t.sol | `4d8af6c4e06673aa` |
-| contracts/test/mocks/OracleMocks.sol | `097597d89a49437c` |
-| contracts/test/vectors/math.json | `48e23e3ce0c26db3` |
-| docs/SPEC.md | `11ce705161840989` |
+| contracts/src/libraries/FixedPointMath.sol | `ceda93baa0ece807` |
+| contracts/src/oracle/ChainlinkAdapters.sol | `7dbadd9f5f79d2d7` |
+| contracts/src/oracle/SingleSourcePriceFeed.sol | `41aa13e9ad6b65cc` |
+| contracts/test/DarliDeployer.t.sol | `ee25158d667ef970` |
+| contracts/test/FixedPointMath.t.sol | `8727fe555bb91e53` |
+| contracts/test/OracleFeed.t.sol | `50d9e9cabb388194` |
+| contracts/test/StableToken.t.sol | `049ab75f2a809d16` |
+| contracts/test/mocks/OracleMocks.sol | `1edf7f875d9e124d` |
+| contracts/test/vectors/math.json | `ee94c997bb9c3d9e` |
+| docs/SPEC.md | `7d49ea0d503bb812` |
 | model/beta_pilot_compare.py | `64251462b830a798` |
-| model/check_figures.py | `dd95c48cb4e57908` |
-| model/check_manifest.py | `ef536beea0c22c4e` |
+| model/check_figures.py | `a020fc9d36346070` |
+| model/check_manifest.py | `965c3dab333a8c64` |
 | model/econ_sim.py | `879485b31c7fc5a0` |
-| model/figures.py | `b77f9d9a0345d087` |
-| model/fuzz.py | `74be6a730c0a09c3` |
-| model/fuzz_oracle.py | `031c537c438cbeaf` |
+| model/figures.py | `369609e969c9154a` |
+| model/fuzz.py | `4f1e47e68c2212d3` |
+| model/fuzz_oracle.py | `4d286d579088865a` |
 | model/model.py | `cff6b6b56e6d668b` |
 | model/mutants.py | `97bed8387dce4fa4` |
 | model/pilot_sweep.py | `fedbe2706b9613eb` |
 | model/results/beta_pilot_compare.jsonl | `fa07685fba612226` |
-| model/results/figures.json | `6a2a8b612bd1cac1` |
+| model/results/figures.json | `41a900e74b67c7d8` |
 | model/results/pilot_seeds.jsonl | `93d76cc221a27b03` |
 | model/results/pilot_summary.jsonl | `3490a40155f0a8b5` |
-| model/spec_check.py | `956fc8d649b1d115` |
+| model/spec_check.py | `45ea1531c050a6d5` |
+| model/study_figures.py | `b48e908d52ad4f07` |
 | model/test_econ_sim.py | `4e0aa5314c0d81a3` |
-| model/test_scenarios.py | `cade8ee0b6ba06cc` |
+| model/test_scenarios.py | `8f5664f6345e71d6` |
 
 ### Submodules, at the commit this release pins
 
@@ -73,8 +74,8 @@ version of OpenZeppelin produced them. Regenerate with `python3 model/check_mani
 | spec mapping | `python3 spec_check.py` | Python 3.12 | all 30 scenarios and all 32 mutants cited and exist |
 | manifest | `python3 check_manifest.py` | Python 3.12 | all hashes match, all required files listed |
 | figures | `python3 check_figures.py` | Python 3.12 | every figure quoted below matches the run that produced it |
-| differential vectors | `python3 contracts/script/export_vectors.py model` | Python 3.12 | 1,228 vectors, identical to the shipped file |
-| Solidity | `forge test` | forge 1.5.1-stable, solc 0.8.26 | 31 passed, 0 failed |
+| differential vectors | `python3 contracts/script/export_vectors.py model` | Python 3.12 | <!-- fig:contracts.vectors_total -->1,292<!-- /fig --> vectors, identical to the shipped file; <!-- fig:contracts.vectors_stepB_beyond_256_bit_product -->64<!-- /fig --> of them exercise step B where `debt × rate` exceeds 256 bits |
+| Solidity | `forge test` | forge 1.5.1-stable, solc 0.8.26 | <!-- fig:contracts.declared_tests -->37<!-- /fig --> passed, 0 failed; `check_test_count.py` confirms forge ran exactly the declared number |
 | pilot tables | `python3 pilot_sweep.py 0 6 20` | Python 3.12 | shipped in `results/`; hardest case rerun identical |
 
 All on the release commit, 2026-09-22, Linux x86-64. A hash match proves a file is the one recorded; this table records that the results were produced by running these files.
@@ -92,23 +93,19 @@ Every number below is recorded by the run that computes it and checked by `pytho
 ### Fuzzer coverage
 An invariant that holds over a path never taken proves nothing, so the accounting fuzzer asserts a floor on how often each
 operation must actually succeed (`MIN_COVERAGE` in `fuzz.py`), scaled to the budget; a path that stops being reachable
-fails the run instead of silently leaving the histogram. Successful executions at `30 300`: liquidation
-<!-- fig:fuzz.fuzz_ops_liq -->58<!-- /fig -->, bad-debt claims <!-- fig:fuzz.fuzz_ops_bad_debt -->23<!-- /fig -->, redemptions <!-- fig:fuzz.fuzz_ops_redeem -->52<!-- /fig -->,
+fails the run instead of silently leaving the histogram. Successful executions at `30 300`: liquidation <!-- fig:fuzz.fuzz_ops_liq -->58<!-- /fig -->, bad-debt claims <!-- fig:fuzz.fuzz_ops_bad_debt -->23<!-- /fig -->, redemptions <!-- fig:fuzz.fuzz_ops_redeem -->52<!-- /fig -->,
 Stability Pool deposits <!-- fig:fuzz.fuzz_ops_sp_dep -->61<!-- /fig -->, settlement and write-off <!-- fig:fuzz.fuzz_ops_urgent -->37<!-- /fig -->, late
-settlement of a written-off Trove <!-- fig:fuzz.fuzz_ops_late -->8<!-- /fig -->, late-recovery claims <!-- fig:fuzz.fuzz_ops_claim_late -->11<!-- /fig -->;
-<!-- fig:fuzz.fuzz_shutdowns -->33<!-- /fig --> branches shut down over the run.
+settlement of a written-off Trove <!-- fig:fuzz.fuzz_ops_late -->8<!-- /fig -->, late-recovery claims <!-- fig:fuzz.fuzz_ops_claim_late -->11<!-- /fig -->; <!-- fig:fuzz.fuzz_shutdowns -->33<!-- /fig --> branches shut down over the run.
 
 ### What the random testers kill on their own
-Of <!-- fig:mutants.mutants_total -->32<!-- /fig --> mutants, all <!-- fig:mutants.mutants_killed -->32<!-- /fig --> are killed, but only
-<!-- fig:mutants.mutants_killed_by_a_fuzzer -->13<!-- /fig --> are killed by a random tester with no scenario at all
+Of <!-- fig:mutants.mutants_total -->32<!-- /fig --> mutants, all <!-- fig:mutants.mutants_killed -->32<!-- /fig --> are killed, but only <!-- fig:mutants.mutants_killed_by_a_fuzzer -->13<!-- /fig --> are killed by a random tester with no scenario at all
 (<!-- fig:mutants.mutants_killed_by_fuzz -->7<!-- /fig --> by the accounting fuzzer, <!-- fig:mutants.mutants_killed_by_fuzz_oracle -->6<!-- /fig --> by the
 oracle fuzzer). The fuzzers are invariant checkers, not behavioural oracles: the scenarios carry the rest, and the
 conformance map in `docs/SPEC.md` 12 is written against these counts rather than against the mere existence of a fuzzer.
 
 ### Stability Pool exactness
 `scenario_17` compares every depositor against a rational shadow: the pool never over-pays by more than one wei, the
-worst under-payment observed is <!-- fig:scenarios.sp_worst_underpayment_wei -->3<!-- /fig --> wei, and the deepest scale reached is
-<!-- fig:scenarios.sp_deepest_scale -->8<!-- /fig --> (`MAX_SCALE_DIFF`).
+worst under-payment observed is <!-- fig:scenarios.sp_worst_underpayment_wei -->3<!-- /fig --> wei, and the deepest scale reached is <!-- fig:scenarios.sp_deepest_scale -->8<!-- /fig --> (`MAX_SCALE_DIFF`).
 
 ### Rounding bound 
 Each claim of R units receives floor(pot * R / claims) and leaves < 1 wei in the pot; a later claim receives at most R / claims <= 1 wei of each earlier
@@ -145,6 +142,8 @@ zero-debt Trove, pending redistribution, last-Trove dust, market price different
 Rates in the two-Trove example (Troves ~120% and ~60%): **<!-- fig:scenarios.holders_rate_absorb -->0.8991<!-- /fig --> for both holders** with borrowers absorbing, **<!-- fig:scenarios.holders_rate_parity -->0.7997<!-- /fig --> for both** with vault parity.
 
 ### `python3 pilot_sweep.py <first> <last> 20` — the proposed pilot, staged settlement, healthy borrowers absorb first
+<!-- fig:studies.pilot_table_results -->
+
 | case | shutdowns / 20 | min economic backing mean / median / worst | holders' recovery mean / median / worst run | worst account | best minus worst account (max over runs) | balances losing >=1%: mean / worst run | borrowers' surplus kept (mean, USD) | SP result mean / worst | LP settlement % mean / worst |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | pilot, calm + 10% dump | 0 | 1.77 / 1.82 / 1.23 | 1.000 / 1.000 / 1.000 | 1.00 | 0.000000 | 0% / 0% | 0 | +360 / +0 | +0.8 / +0.5 |
@@ -154,11 +153,17 @@ Rates in the two-Trove example (Troves ~120% and ~60%): **<!-- fig:scenarios.hol
 | ETH -60% in 24h, network up | 13 | 1.12 / 1.09 / 1.03 | 1.000 / 1.000 / 0.951 | 0.95 | 0.000000 | 40% / 100% | 2,085 | +2079 / +175 | +0.2 / -2.6 |
 | ETH -60% during 24h sequencer outage | 13 | 0.99 / 1.03 / 0.57 | 0.922 / 0.999 / 0.566 | 0.57 | 0.000000 | 35% / 100% | 1,299 | -2404 / -14012 | -4.3 / -23.2 |
 
+<!-- /fig -->
 
-Reading: the spread between accounts is zero in every run of every case. Recovery below 1.00 in the milder cases is the fall of the collateral's MARKET price between the
-shutdown and the claim (settlement is at the reference price); it is not a shortfall. `settlement_study.py` is obsolete (order cannot matter any more) and was removed from the current set.
+
+Reading: the largest spread between accounts in any run of any case is <!-- fig:studies.pilot_max_spread_between_accounts -->4e-16<!-- /fig --> of a token's recovery, the simulator's floating-point
+rounding (econ_sim works in floats; the reference model does not). Recovery below 1.00 in the milder cases is the fall of the collateral's MARKET price between the
+shutdown and the claim (settlement is at the reference price); it is not a shortfall. The tables in this section, and every figure the whitepaper quotes from the
+pilot, are generated from the committed `results/*.jsonl` by `study_figures.py`; the summary key `min_tcr` holds economic backing (see that script).
 
 ### `python3 beta_pilot_compare.py <first> <last> 20` — beta on the pilot's REAL fixed-range pool, identical market paths, beta sampled once
+<!-- fig:studies.beta_table_results -->
+
 | shock | policy | sell volume the pool could not fill | redeemed (% of supply) | of which by stuck sellers themselves | borrower exits / opened | final supply | LP at settlement value |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | calm + 10% dump | beta = 1 | 4.7% | 4% | 4,259 | 1.8 / 50 | 124,760 | +1.2% |
@@ -170,11 +175,26 @@ shutdown and the claim (settlement is at the reference price); it is not a short
 | ETH -40% / 24h | beta = 2 | 6.6% | 13% | 11,350 | 5.5 / 50 | 89,089 | +1.3% |
 | ETH -40% / 24h | beta = 4 | 9.2% | 29% | 21,864 | 10.6 / 45 | 73,527 | +1.4% |
 
+<!-- /fig -->
+
 **Reading.** On the pool the design actually uses the ranking reverses: with beta = 1 there is less unserved selling, far less
-redemption (4% of supply against 28%), five times fewer borrower exits and a larger supply. The reason is structural: inside a 0.99 - 1.01 band a redemption of
+redemption (<!-- fig:studies.beta_redeemed_pct_beta1_calm -->4<!-- /fig -->% of supply against <!-- fig:studies.beta_redeemed_pct_beta4_calm -->28<!-- /fig -->%), <!-- fig:studies.beta_exit_ratio_calm -->6.0<!-- /fig --> times fewer borrower exits in the calm case and <!-- fig:studies.beta_exit_ratio_crash40 -->5.6<!-- /fig --> times fewer after a 40% crash, and a larger supply. The reason is structural: inside a 0.99 - 1.01 band a redemption of
 1,000 costs 1.5% with beta = 1, so it never pays and the band itself carries the price; with beta = 4 it costs 0.75%, so stuck sellers and keepers redeem and
-low-rate borrowers are pushed out. A companion study on a virtual-reserve pool, in which the price is free to fall, gives the opposite ranking: there cheaper redemption tightens the peg.
+low-rate borrowers are pushed out. A companion study on a virtual-reserve pool, in which the price is free to fall, gives the opposite ranking: there cheaper redemption tightens the peg. That study is not in this package (next section).
 **Neither result settles beta**; what the two studies show together is that beta trades the
 holders' cost of exit against the borrowers' redemption burden, and that its effect depends on the shape of the liquidity. The dynamic formulas still show no advantage.
 
+### Studies referred to but not in this package
 
+The whitepaper draws four conclusions from studies whose scripts and output are not in this repository. It states each only
+qualitatively and quotes no number from it, because nothing here can reproduce one.
+
+| Study | Conclusion the whitepaper draws from it |
+| --- | --- |
+| Pilot size sweep | the size of the pilot: the smallest debt at which the mechanism works, and the size beyond which results stop improving |
+| Beta on a virtual-reserve pool, whose price is free to fall | with that pool shape, a larger beta tightens the peg (the opposite of the fixed-range result above) |
+| Liquidity providers paid a share of interest | liquidity in the pool is highly sensitive to an assumed income |
+| Keeper latency | keeper speed is among the largest effects on the distance from the peg |
+
+Bringing one in means committing the script that runs it and its output under `model/results/`, adding it to the manifest,
+and quoting its figures through markers.

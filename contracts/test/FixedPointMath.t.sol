@@ -48,13 +48,31 @@ contract FixedPointMathTest is Test {
     }
 
     /// The rounding gap that feeds epsilon (SPEC B1): aggregate (ceil) >= sum of troves (floor), always.
-    function testFuzz_aggregateNeverBelowSumOfTroves(uint96 d1, uint96 d2, uint64 r1, uint64 r2, uint32 dt) public pure {
+    function testFuzz_aggregateNeverBelowSumOfTroves(uint96 d1, uint96 d2, uint64 r1, uint64 r2, uint32 dt)
+        public
+        pure
+    {
         uint256 rate1 = bound(r1, 1, 25e17);
         uint256 rate2 = bound(r2, 1, 25e17);
         uint256 agg = FixedPointMath.aggregateInterest(uint256(d1) * rate1 + uint256(d2) * rate2, dt);
         uint256 sum = FixedPointMath.troveInterest(d1, rate1, dt) + FixedPointMath.troveInterest(d2, rate2, dt);
         assertGe(agg, sum);
         assertLe(agg - sum, 2, "gap is at most one wei per trove");
+    }
+
+    /// Refactoring the product must not move a single wei where the old form worked: wherever recordedDebt * annualRate
+    /// fits in 256 bits, the new factoring equals the old one exactly (both are exact floors of the same integer).
+    function testFuzz_troveInterest_equalsTheOldFactoringWhereItDidNotOverflow(uint256 debt, uint256 rate, uint64 dt)
+        public
+        pure
+    {
+        rate = bound(rate, 1, 25e17);
+        debt = bound(debt, 0, type(uint256).max / rate);
+        assertEq(
+            FixedPointMath.troveInterest(debt, rate, dt),
+            FixedPointMath.mulDivDown(debt * rate, dt, 365 days * WAD),
+            "step B changed a value inside the old domain"
+        );
     }
 
     function testFuzz_decPowIsMonotoneAndBounded(uint256 base, uint32 n) public pure {

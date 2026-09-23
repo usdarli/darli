@@ -1,4 +1,9 @@
 {
+  "contracts": {
+    "declared_tests": "37",
+    "vectors_stepB_beyond_256_bit_product": "64",
+    "vectors_total": "1,292"
+  },
   "econ_sim": {
     "econ_sim_passed": "8",
     "econ_sim_total": "8"
@@ -33,6 +38,8 @@
     "claim_order_shift_wei": "50",
     "claim_split_loss_wei": "4",
     "claim_split_parts": "10",
+    "healthy_borrower_keeps_absorb_eth": "0.000",
+    "healthy_borrower_keeps_parity_eth": "0.995",
     "holders_rate_absorb": "0.8991",
     "holders_rate_parity": "0.7997",
     "late_recovery_a_eth": "3.4976",
@@ -49,5 +56,31 @@
     "settle_troves": "1,500",
     "sp_deepest_scale": "8",
     "sp_worst_underpayment_wei": "3"
+  },
+  "studies": {
+    "beta_exit_ratio_calm": "6.0",
+    "beta_exit_ratio_crash40": "5.6",
+    "beta_redeemed_pct_beta1_calm": "4",
+    "beta_redeemed_pct_beta4_calm": "28",
+    "beta_table_results": "\n\n| shock | policy | sell volume the pool could not fill | redeemed (% of supply) | of which by stuck sellers themselves | borrower exits / opened | final supply | LP at settlement value |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| calm + 10% dump | beta = 1 | 4.7% | 4% | 4,259 | 1.8 / 50 | 124,760 | +1.2% |\n| calm + 10% dump | beta = 2 | 6.1% | 12% | 11,422 | 5.6 / 44 | 103,948 | +0.9% |\n| calm + 10% dump | beta = 4 | 8.3% | 28% | 21,864 | 10.6 / 41 | 88,492 | +0.8% |\n| calm + 10% dump | pressure formula | 5.7% | 11% | 10,208 | 4.9 / 47 | 112,067 | +1.0% |\n| calm + 10% dump | size formula | 8.3% | 28% | 21,864 | 10.6 / 41 | 88,492 | +0.8% |\n| ETH -40% / 24h | beta = 1 | 5.2% | 4% | 4,180 | 1.9 / 58 | 108,132 | +1.7% |\n| ETH -40% / 24h | beta = 2 | 6.6% | 13% | 11,350 | 5.5 / 50 | 89,089 | +1.3% |\n| ETH -40% / 24h | beta = 4 | 9.2% | 29% | 21,864 | 10.6 / 45 | 73,527 | +1.4% |\n\n",
+    "keeper_blocked_hours_calm_mean": "19",
+    "keeper_blocked_hours_crash_mean_max": "68",
+    "keeper_blocked_hours_crash_mean_min": "25",
+    "keeper_budget_usd": "40,000",
+    "keeper_pnl_calm_mean_usd": "362",
+    "keeper_pnl_case_mean_max_usd": "+1,082",
+    "keeper_pnl_case_mean_min_usd": "+85",
+    "keeper_pnl_single_run_max_usd": "+7,841",
+    "keeper_pnl_single_run_min_usd": "-60",
+    "pilot_days": "180",
+    "pilot_lp_calm_settlement_return_pct": "+0.8",
+    "pilot_lp_worst_run_nominal_pct": "+0.8",
+    "pilot_lp_worst_settlement_loss_pct": "23.2",
+    "pilot_max_spread_between_accounts": "4e-16",
+    "pilot_runs_per_case": "20",
+    "pilot_table_results": "\n\n| case | shutdowns / 20 | min economic backing mean / median / worst | holders' recovery mean / median / worst run | worst account | best minus worst account (max over runs) | balances losing >=1%: mean / worst run | borrowers' surplus kept (mean, USD) | SP result mean / worst | LP settlement % mean / worst |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| pilot, calm + 10% dump | 0 | 1.77 / 1.82 / 1.23 | 1.000 / 1.000 / 1.000 | 1.00 | 0.000000 | 0% / 0% | 0 | +360 / +0 | +0.8 / +0.5 |\n| ETH -40% in 24h, network up | 3 | 1.38 / 1.35 / 1.04 | 0.997 / 1.000 / 0.972 | 0.97 | 0.000000 | 15% / 100% | 575 | +1306 / +0 | +0.6 / -0.8 |\n| ETH -40%, feed dead 12h, network up | 3 | 1.38 / 1.35 / 1.04 | 0.996 / 1.000 / 0.965 | 0.96 | 0.000000 | 15% / 100% | 560 | +1281 / +0 | +0.6 / -1.6 |\n| ETH -40% during 12h sequencer outage | 3 | 1.39 / 1.34 / 1.04 | 0.996 / 1.000 / 0.965 | 0.96 | 0.000000 | 15% / 100% | 538 | +1218 / +0 | +0.6 / -1.6 |\n| ETH -60% in 24h, network up | 13 | 1.12 / 1.09 / 1.03 | 1.000 / 1.000 / 0.951 | 0.95 | 0.000000 | 40% / 100% | 2,085 | +2079 / +175 | +0.2 / -2.6 |\n| ETH -60% during 24h sequencer outage | 13 | 0.99 / 1.03 / 0.57 | 0.922 / 0.999 / 0.566 | 0.57 | 0.000000 | 35% / 100% | 1,299 | -2404 / -14012 | -4.3 / -23.2 |\n\n",
+    "pilot_table_whitepaper": "\n\n| ETH shock on day 90 | Runs that shut down | Lowest economic backing over the whole path, mean / median / worst | System-wide recovery per USDarli, mean / worst run | Worst single account (100 USDarli or more) | Share of holders' balances that lost 1% or more, mean / worst run | Stability Pool result, mean / worst | LP at settlement value, mean / worst |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| none (calm, one 10% sale) | 0 of 20 | 177% / 182% / 123% | 1.000 / 1.00 | 1.00 | 0% / 0% | +360 / +0 | +0.8% / +0.5% |\n| \u221240% in a day, network up | 3 of 20 | 138% / 135% / 104% | 0.997 / 0.97 | 0.97 | 15% / 100% | +1,306 / +0 | +0.6% / -0.8% |\n| \u221240%, price feed dead for 12 hours | 3 of 20 | 138% / 135% / 104% | 0.996 / 0.96 | 0.96 | 15% / 100% | +1,281 / +0 | +0.6% / -1.6% |\n| \u221240% during a 12-hour sequencer outage | 3 of 20 | 139% / 134% / 104% | 0.996 / 0.96 | 0.96 | 15% / 100% | +1,218 / +0 | +0.6% / -1.6% |\n| \u221260% in a day, network up | 13 of 20 | 112% / 109% / 103% | 1.000 / 0.95 | 0.95 | 40% / 100% | +2,079 / +175 | +0.2% / -2.6% |\n| **\u221260% during a 24-hour sequencer outage** | 13 of 20 | 99% / 103% / 57% | 0.922 / 0.57 | 0.57 | 35% / 100% | -2,404 / -14,012 | -4.3% / -23.2% |\n\n",
+    "pilot_worst_recovery_40pct_cases": "0.96",
+    "pilot_worst_recovery_network_up": "0.95"
   }
 }

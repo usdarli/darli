@@ -61,7 +61,7 @@ script `spec_check.py` verifies that every `S-NN` named here exists and that eve
 
 ## 3. Token
 
-- **T1** USDarli is ERC-20 with permit. Minters are the branch contracts of the deployment, written once by the deployer and sealed; nothing can add or remove a minter afterwards. (Foundry `test_minterSetIsSealedForEver`)
+- **T1** USDarli is ERC-20 with permit. Minters are the branch contracts of the deployment, written once by the deployer and sealed; nothing can add or remove a minter afterwards. A minter burns from any holder without an allowance, so every holder's balance is exactly as safe as the branches: §10.5 binds them. (Foundry `test_minterSetIsSealedForEver`, `test_onlyMintersMintAndBurn`)
 - **T2** Transfers to the token contract itself and to the zero address revert.
 - **T3** `totalSupply == Σ aggDebt` over branches at every instant. (I-1, F)
 
@@ -71,7 +71,7 @@ script `spec_check.py` verifies that every `S-NN` named here exists and that eve
 A Trove is an NFT with `coll`, `recordedDebt`, `annualRate`, `stake`, redistribution snapshots, `lastDebtUpdate`, `lastRateAdjust`, `frontendId`, status ∈ {Active, Zombie, ClosedByOwner, ClosedByLiquidation, ClosedBySettlement}.
 
 ### 4.2 Two ledgers
-- **B1** Each branch keeps `aggDebt` and `aggWeightedDebtSum = Σ recordedDebt_i × rate_i`. Step A (every state change): mint `p = ceil(aggW × Δt / (YEAR × WAD))`, split as §8; then `aggDebt += p`. Step B (touched Trove): its own interest `floor(debt × rate × Δt / (YEAR × WAD))` is added to `recordedDebt`; no second mint. Time without any transaction changes nothing until the next step A. (S-01, S-05, S-11, M-1 step A rounds down)
+- **B1** Each branch keeps `aggDebt` and `aggWeightedDebtSum = Σ recordedDebt_i × rate_i`. Step A (every state change): mint `p = ceil(aggW × Δt / (YEAR × WAD))`, split as §8; then `aggDebt += p`. Step B (touched Trove): its own interest `floor(debt × rate × Δt / (YEAR × WAD))` is added to `recordedDebt`; no second mint; exact wherever the result fits in 256 bits, whatever the debt (Foundry `test_diff_stepB_roundsDown`, `testFuzz_troveInterest_equalsTheOldFactoringWhereItDidNotOverflow`). Time without any transaction changes nothing until the next step A. (S-01, S-05, S-11, M-1 step A rounds down)
 - **B2** Identity at every instant: `aggDebt + pendingAggInterest == Σ troveDebt(now) + badDebt + ε`, `ε ≥ 0`, `ε` bounded empirically (max observed 28 wei over 30 × 300 fuzz steps). (I-2, F)
 - **B3** Interest stops in both ledgers at `shutdownAt`: `t_eff = min(now, shutdownAt)` and `aggW = 0` after shutdown. (S-02, I-3, M-2)
 - **B4** Minimum debt: a Trove is never opened, increased or reactivated below it; a repayment may not take a Trove from ≥ minimum to a non-zero amount below it; a Trove already below it accepts any repayment. Raising the minimum never traps a loan. (S-06 `min_debt_increase`, F `min_debt`)
@@ -143,7 +143,7 @@ A Trove is an NFT with `coll`, `recordedDebt`, `annualRate`, `stake`, redistribu
 - **O2** Status order: `NetworkUnstable` (sequencer down or within the grace period) → `PriceInvalid` (stale, non-positive, future-dated, unreadable, or composite parts too far apart) → `Failed` → `Valid`. (S-20 a–i, fuzz_oracle F1–F9, M-12, M-13, M-14)
 - **O3** `Failed` only with the sequencer continuously up for the whole timeout, and either a readable answer older than the timeout or malformed answers observed a timeout apart with no healthy observation between. A flapping sequencer postpones `Failed`. (S-20, M-11, M-15)
 - **O4** Price-dependent borrower operations revert on any status but `Valid` and never record a shutdown; the marker `invalidSince` survives only in non-reverting transactions. (S-20 d)
-- **O5** Gas stipend: each feed has an immutable `FEED_GAS_LIMIT`; before the read the transaction proves `gasleft ≥ (stipend + overhead) × 64/63 + buffer`; the read is a low-level `staticcall` copying exactly 64 bytes. Assumptions: stipend above the feed's true cost (measured on a fork, **[open]**), adapter returns the 64-byte shape. A provider swapping in a costlier aggregator can turn the stipend into a detected failure; the only remedy is a new deployment. (S-20 e/f, Foundry `test_e`, `test_f`)
+- **O5** Gas stipend: each feed has an immutable `FEED_GAS_LIMIT`; before the read the transaction proves `gasleft ≥ (stipend + overhead) × 64/63 + buffer`; the read is a low-level `staticcall` copying exactly 64 bytes. Assumptions: stipend above the feed's true cost (measured on a fork, **[open]**), adapter returns the 64-byte shape. A provider swapping in a costlier aggregator can turn the stipend into a detected failure; the only remedy is a new deployment. (S-20 e/f, Foundry `test_e_stipendGuardCannotBeGriefed`, `test_f_gasBurningSource`)
 - **O6** After a `Failed` shutdown all later prices are `lastGoodPrice`. (S-15a)
 
 ## 8. Revenue
@@ -184,8 +184,8 @@ A Trove is an NFT with `coll`, `recordedDebt`, `annualRate`, `stake`, redistribu
 
 ## 10. Deployment
 
-- **D1** One transaction: create the token; `sealMinters(branches)`; `fix_staking_destination(staking)`; initialise the canonical USDarli/quote pool in Uniswap v4 at `sqrtPrice` for par (decimals handled: 6 or 18, either token ordering), `hooks = 0`; bind the fixed-range vault to that key; mark deployed. Cannot run twice. (S-26, Foundry `DarliDeployer.t.sol`)
-- **D2** The pool race: the token's address is predictable and v4 lets anyone initialise any key, so deployment must not depend on winning. If `initialize` fails, the pool must demonstrably exist (price read from the PoolManager, **layout to be confirmed on a fork [open]**); otherwise the deployment reverts. Target and observed prices are recorded separately. (S-26, Foundry `test_poolRace_realPredictedAddress`, `test_unrelatedInitialiseFailure_revertsInsteadOfFalseSuccess`)
+- **D1** One transaction: create the token; `sealMinters(branches)`; `fix_staking_destination(staking)`; initialise the canonical USDarli/quote pool in Uniswap v4 at the representable `sqrtPrice` at or just below par (decimals handled: 6 or 18, either token ordering), `hooks = 0`; a quote without code is refused (Foundry `test_quoteWithoutCode_isRefused`); bind the fixed-range vault to that key; mark deployed. Cannot run twice. (S-26, Foundry `DarliDeployer.t.sol`)
+- **D2** The pool race: the token's address is predictable and v4 lets anyone initialise any key, so deployment must not depend on winning. If `initialize` succeeds, the pool must hold exactly the target price, or the deployment reverts: every uncontested deployment checks the storage layout on the real PoolManager. If `initialize` fails, the pool must demonstrably exist and hold a price v4 can hold; otherwise the deployment reverts. The layout matches v4-core source and is **to be confirmed against the deployed PoolManager on a fork [open]**. Target and observed prices are recorded separately. (S-26, Foundry `test_poolRace_realPredictedAddress`, `test_unrelatedInitialiseFailure_revertsInsteadOfFalseSuccess`, `test_uncontestedDeployment_readsBackItsOwnPrice_orRefuses`, `test_racedPool_priceNoPoolCanHold_isRefused`)
 - **D3** The core never holds a reference to Uniswap, the pool or the vault. (S-26)
 - **D4** The vault refuses deposits while the pool price is outside its fixed range, and each depositor states his own accepted price bounds. This is not protection against manipulation inside the band. Token amounts and real position maths are not modelled **[open]**. (S-26)
 
@@ -196,6 +196,7 @@ The Python model does not define contract boundaries; the following is the contr
   `addColl` by anyone; `liquidate`, `redeem`, `settleTrove`, `writeOff`, `routeRevenue`, `pokeOracle`, `triggerShutdown`, claims of surplus and late shares:
   permissionless.
 - Amount validation: zero amounts revert; collateral and debt inputs are 18-decimal normalised; a redemption request above the redeemer's balance reverts.
+- Burning: a branch burns USDarli only from the account that initiated the operation, or from the protocol's own accounts (the Stability Pool). `StableToken.burn` cannot check this (T1); the branches must, and their tests must show it.
 - Internal functions (`_stepA`, `_touch`, `_redistribute`, `_endPhaseOne`, `_lateRecovery`, `_payGasDeposit`, `_sweepDustIfEmpty`) are never externally callable.
 - Every external entry point runs the reentrancy guard; the only external calls the core makes are the collateral token, the price feed (staticcall with a
   stipend) and the stablecoin; the revenue hand-over transfers to a fixed address and makes no call into it.
@@ -242,4 +243,4 @@ not behaviour. The honest measure is how many of the 32 mutants a random tester 
 
 ## 13. Open items before implementation
 
-1. β. 2. Gas deposit amount. 3. Fixed values of `FEED_GAS_LIMIT` and oracle thresholds from a fork test. 4. PoolManager storage layout for the post-initialise check. 5. Vault quote asset, range and position maths. 6. DARLI supply and distribution. 7. Persistent failure in shared settlement parts. 8. Legal review before any deployment.
+1. β. 2. Gas deposit amount. 3. Fixed values of `FEED_GAS_LIMIT` and oracle thresholds from a fork test. 4. PoolManager storage layout for the post-initialise check: matches v4-core source; to be confirmed against the deployed bytecode on a fork. The uncontested path already checks itself (D2). 5. Vault quote asset, range and position maths. 6. DARLI supply and distribution. 7. Persistent failure in shared settlement parts. 8. Legal review before any deployment. 9. How each branch learns the stablecoin's address. The token is created inside `DarliDeployer.deploy`, but the branches are passed in already built and must hold that address as an immutable; it is predictable (`test_poolRace_realPredictedAddress`), yet nothing checks that a minter was built against it, so a mis-built branch would be sealed for ever. Candidates: a view on `IBranchManager` returning its stablecoin, checked for every minter before sealing; branches created by the deployer in the same transaction; the token at a CREATE2 address with a fixed salt.

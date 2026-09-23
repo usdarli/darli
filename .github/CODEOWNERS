@@ -1,0 +1,14 @@
+# Review is required on everything: the contracts are immutable once deployed, and the specification, the model and the
+# tests are the only things standing between a wrong rule and a permanent one.
+*                     @merdack
+
+# The three places a rule lives (AGENTS.md 1). A change to any one of them without the other two is an open issue.
+/docs/SPEC.md         @merdack
+/model/               @merdack
+/contracts/           @merdack
+
+# The record and the gates that protect it.
+/docs/RESULTS.md      @merdack
+/.github/             @merdack
+/RELEASING.md         @merdack
+/AGENTS.md            @merdack

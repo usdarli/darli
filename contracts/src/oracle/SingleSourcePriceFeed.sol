@@ -39,7 +39,9 @@ contract SingleSourcePriceFeed is IPriceFeed {
         uint256 feedGasLimit_,
         uint256 sequencerGasLimit_
     ) {
-        if (stalenessThreshold_ == 0 || stalenessThreshold_ >= failureTimeout_) revert BadConfig();
+        if (stalenessThreshold_ == 0 || stalenessThreshold_ >= failureTimeout_) {
+            revert BadConfig();
+        }
         source = source_;
         sequencer = sequencer_;
         stalenessThreshold = stalenessThreshold_;
@@ -69,7 +71,8 @@ contract SingleSourcePriceFeed is IPriceFeed {
         if (!netOkForGrace) return (lastGoodPrice, PriceStatus.NetworkUnstable);
 
         // 2. one guarded read
-        (bool ok, int256 value, uint256 updatedAt) = _guardedRead(address(source), feedGasLimit, IFeedSource.read.selector);
+        (bool ok, int256 value, uint256 updatedAt) =
+            _guardedRead(address(source), feedGasLimit, IFeedSource.read.selector);
         bool malformed = !ok || value <= 0 || updatedAt > block.timestamp;
 
         if (malformed) {
@@ -117,7 +120,9 @@ contract SingleSourcePriceFeed is IPriceFeed {
         view
         returns (bool ok, int256 a, uint256 b)
     {
-        if (gasleft() < ((stipend + CALL_OVERHEAD) * 64) / 63 + ORACLE_GAS_BUFFER) revert InsufficientGasForOracleCall();
+        if (gasleft() < ((stipend + CALL_OVERHEAD) * 64) / 63 + ORACLE_GAS_BUFFER) {
+            revert InsufficientGasForOracleCall();
+        }
         bool success;
         uint256 returned;
         bytes32 w0;

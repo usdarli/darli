@@ -1,7 +1,10 @@
 """
 Invariant fuzzer. Random sequences of user ops, liquidations, redemptions, price moves,
 oracle/network states, governance parameter changes and idle time.
-Invariants are checked BEFORE and AFTER every step.   python3 fuzz.py [seeds] [steps]
+Invariants are checked BEFORE and AFTER every step.   python3 fuzz.py [seeds] [steps] [first_seed]
+
+`first_seed` lets a nightly run cover seeds nobody has run before instead of repeating the release configuration; it
+defaults to 0, so `fuzz.py 30 300` stays exactly the run docs/RESULTS.md records, and only that run writes figures.
 """
 import os as _os
 _os.chdir(_os.path.dirname(_os.path.abspath(__file__)))
@@ -253,9 +256,10 @@ def _main():
 
         seeds = int(sys.argv[1]) if len(sys.argv) > 1 else 40
         steps = int(sys.argv[2]) if len(sys.argv) > 2 else 400
+        first = int(sys.argv[3]) if len(sys.argv) > 3 else 0
         by = {}
         tot = dict(ok=0, reverted=0, max_eps=0, max_ratio=0.0, shutdowns=0, with_bad_debt=0)
-        for seed in range(seeds):
+        for seed in range(first, first + seeds):
             st = run(seed, steps)
             tot["ok"] += st["ok"]; tot["reverted"] += st["reverted"]
             tot["max_eps"] = max(tot["max_eps"], st["max_eps"]); tot["max_ratio"] = max(tot["max_ratio"], st["max_ratio"])
@@ -264,7 +268,7 @@ def _main():
             tot["shutdowns"] += len(st["shutdown"]); tot["with_bad_debt"] += 1 if st["bad_debt"] else 0
             tot["troves_rewarded"] = tot.get("troves_rewarded", 0) + st["troves_rewarded"]
             tot["gas_paid_total"] = tot.get("gas_paid_total", 0) + st["gas_paid_total"]
-        print(f"{seeds} seeds x {steps} steps: all invariants held before and after every step")
+        print(f"{seeds} seeds x {steps} steps from seed {first}: all invariants held before and after every step")
         print(tot)
         assert tot["troves_rewarded"] > 0, "no Trove was ever rewarded: the deposit paths were not exercised"
         print("successful ops:", dict(sorted(by.items())))
@@ -285,7 +289,7 @@ def _main():
             assert not short, ("coverage floor not met (a path stopped being reachable): " + "; ".join(short))
             print(f"coverage: every one of {len(MIN_COVERAGE)} required operations met its floor")
 
-        if (seeds, steps) == (30, 300):                  # the configuration docs/RESULTS.md records
+        if (seeds, steps, first) == (30, 300, 0):        # the configuration docs/RESULTS.md records
             from figures import fig, dump
             fig("fuzz_stats", tot)
             fig("fuzz_max_eps_wei", tot["max_eps"])
