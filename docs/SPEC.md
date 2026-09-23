@@ -63,7 +63,7 @@ script `spec_check.py` verifies that every `S-NN` named here exists and that eve
 
 - **T1** USDarli is ERC-20 with permit. Minters are the branch contracts of the deployment, written once by the deployer and sealed; nothing can add or remove a minter afterwards. A minter burns from any holder without an allowance, so every holder's balance is exactly as safe as the branches: §10.5 binds them. (Foundry `test_minterSetIsSealedForEver`, `test_onlyMintersMintAndBurn`)
 - **T2** Transfers to the token contract itself and to the zero address revert.
-- **T3** `totalSupply == Σ aggDebt` over branches at every instant. (I-1, F)
+- **T3** `totalSupply == Σ aggDebt` over branches at every instant. (I-1, F, Foundry `invariant_ledgersAgree`)
 
 ## 4. Borrowing (live branch)
 
@@ -71,26 +71,26 @@ script `spec_check.py` verifies that every `S-NN` named here exists and that eve
 A Trove is an NFT with `coll`, `recordedDebt`, `annualRate`, `stake`, redistribution snapshots, `lastDebtUpdate`, `lastRateAdjust`, `frontendId`, status ∈ {Active, Zombie, ClosedByOwner, ClosedByLiquidation, ClosedBySettlement}.
 
 ### 4.2 Two ledgers
-- **B1** Each branch keeps `aggDebt` and `aggWeightedDebtSum = Σ recordedDebt_i × rate_i`. Step A (every state change): mint `p = ceil(aggW × Δt / (YEAR × WAD))`, split as §8; then `aggDebt += p`. Step B (touched Trove): its own interest `floor(debt × rate × Δt / (YEAR × WAD))` is added to `recordedDebt`; no second mint; exact wherever the result fits in 256 bits, whatever the debt (Foundry `test_diff_stepB_roundsDown`, `testFuzz_troveInterest_equalsTheOldFactoringWhereItDidNotOverflow`). Time without any transaction changes nothing until the next step A. (S-01, S-05, S-11, M-1 step A rounds down)
+- **B1** Each branch keeps `aggDebt` and `aggWeightedDebtSum = Σ recordedDebt_i × rate_i`. Step A (every state change): mint `p = ceil(aggW × Δt / (YEAR × WAD))`, split as §8; then `aggDebt += p`. Step B (touched Trove): its own interest `floor(debt × rate × Δt / (YEAR × WAD))` is added to `recordedDebt`; no second mint; exact wherever the result fits in 256 bits, whatever the debt (Foundry `test_diff_stepB_roundsDown`, `testFuzz_troveInterest_equalsTheOldFactoringWhereItDidNotOverflow`, `test_diff_borrowerTraceMatchesModel`). A transfer of the Trove's NFT runs step B first, so what accrued before it is credited to the owner who held it (Foundry `test_transferCreditsTheOldOwnerFirst`). Time without any transaction changes nothing until the next step A. (S-01, S-05, S-11, M-1 step A rounds down)
 - **B2** Identity at every instant: `aggDebt + pendingAggInterest == Σ troveDebt(now) + badDebt + ε`, `ε ≥ 0`, `ε` bounded empirically (max observed 28 wei over 30 × 300 fuzz steps). (I-2, F)
 - **B3** Interest stops in both ledgers at `shutdownAt`: `t_eff = min(now, shutdownAt)` and `aggW = 0` after shutdown. (S-02, I-3, M-2)
 - **B4** Minimum debt: a Trove is never opened, increased or reactivated below it; a repayment may not take a Trove from ≥ minimum to a non-zero amount below it; a Trove already below it accepts any repayment. Raising the minimum never traps a loan. (S-06 `min_debt_increase`, F `min_debt`)
-- **B5** The last Trove of a branch may close while short by ≤ `DUST_THRESHOLD`; the shortfall is parked in `badDebt`. (S-10-dust, M)
+- **B5** The last Trove of a branch may close while short by ≤ `DUST_THRESHOLD`; the shortfall is parked in `badDebt`. (S-10-dust, M, Foundry `test_lastTroveClosesShortByDustOnly`)
 
 ### 4.3 Rates and fees
 - **B6** Opening or adding debt costs an upfront fee = 7 days of interest at the branch average rate, minted and split as §8, added to the debt. (S-05)
 - **B7** `adjustRate` within 7 days of the last change costs the upfront fee on the whole debt and requires ICR ≥ MCR and TCR ≥ CCR afterwards; otherwise free. (S-13)
 
 ### 4.4 Risk gate
-- **B8** One shared gate `_requireRiskIncreaseAllowed(debtUp, collDown)` is used by every entry point. It requires: branch not shut down; a `Valid` price; ICR ≥ MCR after the operation; and below CCR, new debt only if TCR ≥ CCR afterwards and collateral out only together with a repayment worth at least as much. (S-15b, S-16, F)
-- **B9** `repay`, `addColl`, `closeTrove`, Stability Pool withdrawal: given their own preconditions (open Trove, sufficient balance, no dust left, valid amount), they depend on no oracle price, no administrative permission and no optional callback into user code, and nothing in the protocol can switch them off while the branch is live. Authorisation of the caller over his own Trove and the transfers of the specified tokens are part of the operations themselves. (S-16 live part, F; see §11 on what is and is not checked)
+- **B8** One shared gate `_requireRiskIncreaseAllowed(debtUp, collDown)` is used by every entry point. It requires: branch not shut down; a `Valid` price; ICR ≥ MCR after the operation; and below CCR, new debt only if TCR ≥ CCR afterwards and collateral out only together with a repayment worth at least as much. (S-15b, S-16, F, Foundry `test_diff_borrowerTraceMatchesModel`)
+- **B9** `repay`, `addColl`, `closeTrove`, Stability Pool withdrawal: given their own preconditions (open Trove, sufficient balance, no dust left, valid amount), they depend on no oracle price, no administrative permission and no optional callback into user code, and nothing in the protocol can switch them off while the branch is live. Authorisation of the caller over his own Trove and the transfers of the specified tokens are part of the operations themselves. (S-16 live part, F, Foundry `test_repayAddCollAndCloseNeverReadThePrice`, `test_riskReducingOperationsIgnoreEveryOracleStatus`; see §11 on what is and is not checked)
 - **B10** No pause of any kind exists; the only stop is a shutdown by the rules of §6.5. (S-09, S-16)
 
 ### 4.5 Debt cap
-- **B11** `cap(t) = min(ceiling, cap0 × 2^floor((t − t_created) / 30 days))`. Checked on `aggDebt` against voluntary debt increases including their upfront fee; interest, repayment and collateral top-ups are never blocked. (S-09, S-10, M-25, M-26, M-27)
+- **B11** `cap(t) = min(ceiling, cap0 × 2^floor((t − t_created) / 30 days))`. Checked on `aggDebt` against voluntary debt increases including their upfront fee; interest, repayment and collateral top-ups are never blocked. (S-09, S-10, M-25, M-26, M-27, Foundry `test_debtCapDoublesEachPeriodUpToTheCeilingAndNeverBlocksInterest`)
 
 ### 4.6 Vault accounting
-- **B12** `accountedColl == Σ coll_i + defaultColl + Σ surplus + badDebtColl + settleSurplusPool + gasPool + latePool`, exactly; vault balance ≥ accounted. Collateral sent straight to the vault belongs to nobody and stays outside every ledger; **there is no skim.** (I-4, S-18, F)
+- **B12** `accountedColl == Σ coll_i + defaultColl + Σ surplus + badDebtColl + settleSurplusPool + gasPool + latePool`, exactly; vault balance ≥ accounted. Collateral sent straight to the vault belongs to nobody and stays outside every ledger; **there is no skim.** (I-4, S-18, F, Foundry `test_strayCollateralStaysOutsideEveryLedger`, `invariant_ledgersAgree`)
 - **B13** Every named pool is ≥ 0; `gasPool == Σ gas_left[tid]`; no Trove ever pays more reward than its deposit. (I-20/21/22)
 
 ## 5. Redemption (live branch)
@@ -148,8 +148,8 @@ A Trove is an NFT with `coll`, `recordedDebt`, `annualRate`, `stake`, redistribu
 
 ## 8. Revenue
 
-- **V1** Every minted interest amount `p` (step A) and every upfront fee is split: `fePart = ceil(p × 3 %)` → FrontendRegistry (credited at source per Trove, funding rounded up, credits rounded down, always solvent; M-3 rounds it down); `spPart = floor(p × 72 %)` → Stability Pool if SP3 allows, else escrow; remainder → escrow. (S-03, S-04, S-05)
-- **V2** Frontends: register with a payout address and a kickback rate that can only rise; a Trove is tagged at opening; self-referral is a 3 % rebate. (S-05 `frontend_long_untouched`, S-13 `extra_checks`)
+- **V1** Every minted interest amount `p` (step A) and every upfront fee is split: `fePart = ceil(p × 3 %)` → FrontendRegistry (credited at source per Trove, funding rounded up, credits rounded down, always solvent; M-3 rounds it down); `spPart = floor(p × 72 %)` → Stability Pool if its deposits are at least `MIN_SP_RESIDUAL`, else escrow; remainder → escrow. (S-03, S-04, S-05, Foundry `test_stabilityPoolShareStartsExactlyAtTheResidual`)
+- **V2** Frontends: register with a payout address and a kickback rate that only that address can raise and nobody can lower; a Trove is tagged at opening; self-referral is a 3 % rebate. The share of an untagged Trove goes to one address fixed at deployment **[open: which, §13]**. (S-05 `frontend_long_untouched`, S-13 `extra_checks`, Foundry `test_kickbackOnlyRisesAndOnlyByItsPayout`)
 - **V3** The escrow makes no calls. `route_revenue(system)` is permissionless, takes no destination, and moves the escrow balance to the staking contract fixed once at deployment (`fix_staking_destination`, refuses a second call). (S-21, M-28)
 
 ### 8.2 DARLI staking
@@ -194,15 +194,19 @@ A Trove is an NFT with `coll`, `recordedDebt`, `annualRate`, `stake`, redistribu
 The Python model does not define contract boundaries; the following is the contract for the Solidity implementation and is **not yet tested anywhere** unless a bullet names its test.
 - Trove mutation (`borrow`, `withdrawColl`, `adjust`, `adjustRate`, `close`, `transfer`) only by the NFT owner or an approved operator; `repay` and
   `addColl` by anyone; `liquidate`, `redeem`, `settleTrove`, `writeOff`, `routeRevenue`, `pokeOracle`, `triggerShutdown`, claims of surplus and late shares:
-  permissionless.
-- Amount validation: zero amounts revert; collateral and debt inputs are 18-decimal normalised; a redemption request above the redeemer's balance reverts.
-- Burning: a branch burns USDarli only from the account that initiated the operation, or from the protocol's own accounts (the Stability Pool). `StableToken.burn` cannot check this (T1); the branches must, and their tests must show it.
+  permissionless. Collateral comes from, and USDarli and collateral go to, the caller (Foundry `test_onlyTheOwnerOrAnApprovedAddressChangesTheTrove`).
+- Amount validation: zero amounts revert (Foundry `test_zeroAmountsAndUnknownFrontendsAreRefused`); collateral and debt inputs are 18-decimal normalised;
+  a redemption request above the redeemer's balance reverts.
+- Burning: a branch burns USDarli only from the account that initiated the operation, or from the protocol's own accounts (the Stability Pool). `StableToken.burn` cannot check this (T1); the branches must, and their tests must show it (Foundry `test_repayBurnsFromTheCallerNeverFromTheOwner`; liquidation and redemption not yet built).
+- Wiring: step A on request only by the branch's Stability Pool, step B on transfer only by its TroveNFT; the vault, the NFT and the queue accept changes
+  only from their branch, the frontend registry only from a minter of the stablecoin (Foundry `test_wiredEntryPointsRefuseEveryoneElse`).
 - Internal functions (`_stepA`, `_touch`, `_redistribute`, `_endPhaseOne`, `_lateRecovery`, `_payGasDeposit`, `_sweepDustIfEmpty`) are never externally callable.
 - The redemption queue (`RateSortedList`) is changed only by its branch, fixed at construction, and makes no external call (Foundry
-  `test_onlyTheBranchCanChangeTheList`, `test_constructorRejectsZeroBranch`). That it holds exactly the branch's Active Troves is the branch's duty and is
-  not yet tested.
-- Every external entry point runs the reentrancy guard; the only external calls the core makes are the collateral token, the price feed (staticcall with a
-  stipend) and the stablecoin; the revenue hand-over transfers to a fixed address and makes no call into it.
+  `test_onlyTheBranchCanChangeTheList`, `test_constructorRejectsZeroBranch`). That it holds exactly the branch's Active Troves is the branch's duty
+  (Foundry `invariant_ledgersAgree`, `test_diff_borrowerTraceMatchesModel`).
+- Every external entry point runs the reentrancy guard. A branch's own contracts (manager, vault, TroveNFT, queue, Stability Pool) call one another and
+  the system's frontend registry; beyond them the core calls only the collateral token, the price feed (staticcall with a stipend) and the stablecoin;
+  the revenue hand-over transfers to a fixed address and makes no call into it.
 
 ## 11. What is checked where
 
@@ -246,4 +250,4 @@ not behaviour. The honest measure is how many of the mutants a random tester kil
 
 ## 13. Open items before implementation
 
-1. β. 2. Gas deposit amount. 3. Fixed values of `FEED_GAS_LIMIT` and oracle thresholds from a fork test. 4. PoolManager storage layout for the post-initialise check: matches v4-core source; to be confirmed against the deployed bytecode on a fork. The uncontested path already checks itself (D2). 5. Vault quote asset, range and position maths. 6. DARLI supply and distribution. 7. Persistent failure in shared settlement parts. 8. Legal review before any deployment. 9. How each branch learns the stablecoin's address. The token is created inside `DarliDeployer.deploy`, but the branches are passed in already built and must hold that address as an immutable; it is predictable (`test_poolRace_realPredictedAddress`), yet nothing checks that a minter was built against it, so a mis-built branch would be sealed for ever. Candidates: a view on `IBranchManager` returning its stablecoin, checked for every minter before sealing; branches created by the deployer in the same transaction; the token at a CREATE2 address with a fixed salt.
+1. β. 2. Gas deposit amount. 3. Fixed values of `FEED_GAS_LIMIT` and oracle thresholds from a fork test. 4. PoolManager storage layout for the post-initialise check: matches v4-core source; to be confirmed against the deployed bytecode on a fork. The uncontested path already checks itself (D2). 5. Vault quote asset, range and position maths. 6. DARLI supply and distribution. 7. Persistent failure in shared settlement parts. 8. Legal review before any deployment. 9. How each branch learns the stablecoin's address. The token is created inside `DarliDeployer.deploy`, but the branches are passed in already built and must hold that address as an immutable; it is predictable (`test_poolRace_realPredictedAddress`), yet nothing checks that a minter was built against it, so a mis-built branch would be sealed for ever. Candidates: a view on `IBranchManager` returning its stablecoin, checked for every minter before sealing; branches created by the deployer in the same transaction; the token at a CREATE2 address with a fixed salt. The branch takes the stablecoin as a constructor argument and exposes it as `stable()`, which every candidate can use; the check itself is not built. 10. Who receives the interfaces' share (V1) of Troves opened without a frontend. The model credits it to an account with no owner; the registry sends it to one address fixed at deployment, which leaves the choice open: the interest escrow (so it reaches stakers), the Stability Pool, or a named incentive address.

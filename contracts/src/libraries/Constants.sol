@@ -16,6 +16,11 @@ uint256 constant MAX_SP_DEPOSITS = 1e30;
 // Redistribution accumulators (6.2)
 uint256 constant L_PRECISION = 1e36;
 
+// Borrowing (4.3, 4.5)
+uint256 constant UPFRONT_FEE_PERIOD = 7 days; // the upfront fee is this much interest at the branch average rate
+uint256 constant RATE_ADJUST_COOLDOWN = 7 days; // a rate change sooner than this after the last one pays the upfront fee
+uint256 constant DEBT_CAP_PERIOD = 30 days; // the built-in cap doubles at most once per period
+
 uint256 constant DUST_THRESHOLD = 1e12;
 uint256 constant MAX_BRANCHES_PER_SYSTEM = 10;
 uint256 constant REWARD_STREAM_PERIOD = 7 days;

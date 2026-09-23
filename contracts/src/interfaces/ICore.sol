@@ -9,10 +9,14 @@ interface ICollateralRegistry {
     function baseRate() external view returns (uint256);
 }
 
+/// Custody of one branch's collateral. Only its BranchManager moves it, and every movement is accounted.
 interface ICollateralVault {
-    /// @notice collateral moved by the protocol itself; INV-4: accountedColl == sum of named accounts.
+    /// @notice collateral moved in or out by the protocol itself; INV-4: accountedColl == sum of named accounts.
     function accountedColl() external view returns (uint256);
-    function claimSurplus() external returns (uint256);
+    /// @notice only the manager, after it has transferred `amount` in.
+    function accountIn(uint256 amount) external;
+    /// @notice only the manager.
+    function send(address to, uint256 amount) external;
     /// @dev There is no skim: collateral sent straight to the vault belongs to nobody and stays outside every ledger (SPEC B12).
 }
 
@@ -26,13 +30,28 @@ interface IInterestRouter {
     function syncAndDistribute() external;
 }
 
+/// SPEC V1, V2. Shared by every branch of a system; a caller counts as a branch exactly when it is a minter of the stablecoin.
 interface IFrontendRegistry {
     function register(address payout, uint256 kickbackRate) external returns (uint32 frontendId);
+    /// @notice only the frontend's payout address; the kickback can only rise.
     function increaseKickback(uint32 frontendId, uint256 newRate) external;
     function claim() external returns (uint256);
-    /// @notice only branches; called inside step B with (accrued interest + upfront fee).
+    /// @notice only branches, at mint time: the registry's part of `amount`, rounded UP so deposits always cover credits.
+    function recordDeposit(uint256 amount) external returns (uint256 part);
+    /// @notice only branches; called in step B with (accrued interest + upfront fee). Rounds DOWN.
     function credit(uint32 frontendId, address troveOwner, uint256 amount) external;
     function claimable(address account) external view returns (uint256);
+    /// @notice ids 1 .. count() - 1 are registered; 0 is "untagged".
+    function count() external view returns (uint32);
+}
+
+/// One ERC-721 per branch. Minted and burned only by the branch; every transfer runs step B first.
+interface ITroveNFT {
+    function mint(address to, uint256 troveId) external;
+    function burn(uint256 troveId) external;
+    function ownerOf(uint256 troveId) external view returns (address);
+    /// @notice the owner, or an address the owner approved for this Trove or for all of its Troves.
+    function isOwnerOrApproved(address account, uint256 troveId) external view returns (bool);
 }
 
 interface IInitiative {

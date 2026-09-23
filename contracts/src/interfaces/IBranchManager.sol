@@ -2,14 +2,60 @@
 pragma solidity ^0.8.26;
 
 import {Trove, BranchLedger, LiquidationValues, PriceStatus} from "../Types.sol";
+import {IStableToken} from "./IStableToken.sol";
 
-/// @notice Branch + trove ledgers, liquidation, in-branch redemption, bad debt, shutdown and staged settlement (SPEC §4, §5, §6, §9).
+/// @notice One branch: its two debt ledgers, its Troves and its shutdown triggers (SPEC §4, §6.5). The borrower entry
+///         points of `IBorrowerGateway` are implemented by the same contract, so every ledger change and the checks that
+///         guard it sit in one place.
 interface IBranchManager {
     // --- permissionless ---
+    /// @notice step A, then step B on one Trove; a Zombie whose debt is back at the minimum rejoins the queue (SPEC B4).
+    function applyPendingDebt(uint256 troveId) external;
+    /// @notice observation that may latch Failed and shut the branch down; never reverts because of the feed.
+    function pokeOracle() external returns (PriceStatus);
+    /// @notice records a shutdown if any trigger holds (SPEC L6); never reverts because of the feed.
+    function triggerShutdown() external;
+
+    // --- only this branch's Stability Pool: yield up to now belongs to the depositors of now ---
+    function mintAggInterest() external returns (uint256 minted);
+
+    // --- only this branch's TroveNFT: step B before ownership changes, so the old owner keeps what accrued (SPEC B1) ---
+    function onTroveTransfer(uint256 troveId) external;
+
+    // --- views ---
+    /// @notice the stablecoin this branch mints; fixed at construction (SPEC §13 item 9 is how a deployment checks it).
+    function stable() external view returns (IStableToken);
+    function ledger() external view returns (BranchLedger memory);
+    function getTrove(uint256 troveId) external view returns (Trove memory);
+    function troveDebt(uint256 troveId) external view returns (uint256);
+    function troveColl(uint256 troveId) external view returns (uint256);
+    function pendingAggInterest() external view returns (uint256);
+    function lastZombieTroveId() external view returns (uint256);
+    function debtCap() external view returns (uint256);
+}
+
+/// @notice SPEC §6.2–§6.4. Implemented with the Stability Pool.
+interface ILiquidations {
     function liquidate(uint256 troveId) external returns (LiquidationValues memory);
     function batchLiquidate(uint256[] calldata troveIds) external;
-    function applyPendingDebt(uint256 troveId) external;
-    // --- staged settlement after a shutdown (SPEC §9); all permissionless ---
+}
+
+/// @notice SPEC §5, the part inside one branch. Implemented with the CollateralRegistry.
+interface IBranchRedemption {
+    /// @notice only the CollateralRegistry.
+    function redeemFromBranch(
+        address redeemer,
+        uint256 amount,
+        uint256 price,
+        uint256 redemptionPrice,
+        uint256 feeRate,
+        uint256 maxIterations
+    ) external returns (uint256 redeemed, uint256 collOut);
+    function unbackedSupply() external view returns (uint256);
+}
+
+/// @notice SPEC §9: staged settlement after a shutdown; all permissionless.
+interface ISettlement {
     /// @notice phase 1: settles one Trove at the reference price fixed at shutdown; pays the caller the Trove's remaining gas deposit (X2).
     function settleTrove(uint256 troveId) external returns (uint256 debt, uint256 contribution, uint256 surplus);
     /// @notice at most MAX_SETTLE_BATCH Troves per call (X3).
@@ -22,33 +68,5 @@ interface IBranchManager {
     function repayBadDebt(uint256 amount) external;
     /// @notice whatever written-off Troves handed over after phase 1, for the caller's exercised claim units (X9).
     function claimLate() external returns (uint256 collOut);
-    /// @notice observation that may latch Failed; never reverts because of the feed.
-    function pokeOracle() external returns (PriceStatus);
-    /// @notice records a shutdown if any trigger holds; never reverts.
-    function triggerShutdown() external;
-
-    // --- only CollateralRegistry ---
-    function redeemFromBranch(
-        address redeemer,
-        uint256 amount,
-        uint256 price,
-        uint256 redemptionPrice,
-        uint256 feeRate,
-        uint256 maxIterations
-    ) external returns (uint256 redeemed, uint256 collOut);
-
-    // --- only BorrowerGateway: step A + step B of whitepaper 4.2 ---
-    function mintAggInterest() external returns (uint256 minted);
-    function touchTrove(uint256 troveId, int256 debtChange, uint256 fee, uint256 newRate, int256 collChange)
-        external
-        returns (uint256 accrued, uint256 redistributed);
-
-    // --- views ---
-    function ledger() external view returns (BranchLedger memory);
-    function getTrove(uint256 troveId) external view returns (Trove memory);
-    function troveDebt(uint256 troveId) external view returns (uint256);
-    function troveColl(uint256 troveId) external view returns (uint256);
-    function pendingAggInterest() external view returns (uint256);
-    function lastZombieTroveId() external view returns (uint256);
-    function unbackedSupply() external view returns (uint256);
+    function claimSurplus() external returns (uint256);
 }
