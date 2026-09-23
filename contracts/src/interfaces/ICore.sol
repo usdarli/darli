@@ -41,7 +41,7 @@ interface IFrontendRegistry {
     /// @notice only branches; called in step B with (accrued interest + upfront fee). Rounds DOWN.
     function credit(uint32 frontendId, address troveOwner, uint256 amount) external;
     function claimable(address account) external view returns (uint256);
-    /// @notice ids 1 .. count() - 1 are registered; 0 is "untagged".
+    /// @notice ids 1 .. count() - 1 are registered; 0 is "untagged": the share goes to the Trove's owner.
     function count() external view returns (uint32);
 }
 

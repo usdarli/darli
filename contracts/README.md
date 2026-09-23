@@ -18,7 +18,7 @@ Solidity 0.8.26, no proxies, custom errors, OpenZeppelin v5.1 only. Test and vec
 | `src/core/StabilityPool.sol` | SP1–SP4: product/sum accounting with scale, rescaled in a loop, gains read across `MAX_SCALE_DIFF` scales, remainders carried — **replayed against the model's pool wei for wei** |
 | `src/core/CollateralVault.sol` | custody of a branch's collateral; `accountedColl` counts only what the protocol moved; no skim (B12) |
 | `src/core/TroveNFT.sol` | one ERC-721 per branch; only the branch mints and burns; every transfer runs step B first (B1) |
-| `src/core/FrontendRegistry.sol` | the interfaces' share (V1, V2): deposits rounded up, credits rounded down; a caller is a branch exactly when it is a sealed minter |
+| `src/core/FrontendRegistry.sol` | the interfaces' share (V1, V2): deposits rounded up, credits rounded down; a frontend keeps its share of the Troves it brought, and a Trove opened without one credits the whole share to its owner; a caller is a branch exactly when it is a sealed minter |
 | `src/oracle/SingleSourcePriceFeed.sol` | `docs/SPEC.md` §7 for one source: sequencer first, temporary `PriceInvalid`, two paths to `Failed`, **fixed gas stipend proven up front**, low-level bounded `staticcall` |
 | `src/oracle/ChainlinkAdapters.sol` | `ChainlinkSource`, `ChainlinkSequencerGuard` |
 | `src/Types.sol`, `src/interfaces/*` | structs, enums, errors and the interfaces still to be implemented: redemption (`IBranchRedemption`, `ICollateralRegistry`), settlement (`ISettlement`, including the bad-debt claims), the router — **interfaces only** |
@@ -52,8 +52,10 @@ own line falls: everything a live branch does in one contract, everything after 
   every borrower operation, liquidations, NFT transfers, time, price and oracle-status moves, Stability Pool deposits,
   withdrawals and claims, surplus and frontend claims and, at the end, an oracle failure. Guided price moves put a Trove
   just below MCR, so liquidations offset against the pool, redistribute, or both, and keep the branch below CCR for
-  stretches, where the recovery-mode rules of B8 are tried on purpose. Each step records whether the model accepted the operation and the whole ledger after
-  it; the replay must accept and refuse exactly the same operations and match every recorded number wei for wei.
+  stretches, where the recovery-mode rules of B8 are tried on purpose. Scripted episodes at fixed steps fund the pool,
+  aim the price at one Trove and liquidate it, so that liquidations leaving the owner a surplus happen whatever the seed,
+  and try repayments that would leave a Trove just under the minimum debt (B4); the generator asserts both. Each step
+  records whether the model accepted the operation and the whole ledger after it; the replay must accept and refuse exactly the same operations and match every recorded number wei for wei.
   Hand mutants of `BranchManager` (the fee period, the dust rule of B4, the frontend credit, the gas refund, interest after
   shutdown in B3 and M-2, each recovery-mode rule of B8, the pool premium cap, the bonus cap, the redistribution
   remainder, the stake snapshot, the owner's surplus) all fail it. One mutant survives because it is equivalent: the

@@ -106,6 +106,8 @@ MUTANTS = {
         "        self.agg_debt += p\n        self.last_agg_update = t", "        require(self.agg_debt + p <= self.debt_cap, \"debt cap\")\n        self.agg_debt += p\n        self.last_agg_update = t"),
     "M43 equal rates redeemed highest Trove id first (the sorted list's order would depend on hints)": (
         "key=lambda t: (t.rate, t.id))", "key=lambda t: (t.rate, -t.id))"),
+    "M44 the share of an untagged Trove goes to an ownerless account instead of its owner": (
+        "            self.claimable[owner] += reward\n            return", "            self.claimable[\"IncentiveController\"] += reward\n            return"),
 }
 
 

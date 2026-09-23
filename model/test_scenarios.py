@@ -191,7 +191,7 @@ def scenario_05_frontend_long_untouched():
     b.apply_pending_debt(ta)
     assert fe.claimable["A2"] > 0
     b.apply_pending_debt(tb)                   # every trove touched at the same instant
-    for who in ("FE1", "A", "A2", "B", fe.INCENTIVES):
+    for who in ("FE1", "A", "A2", "B"):
         fe.claim(who)
     check_invariants(s)
     dust = s.stable.bal[fe.ADDR]
@@ -1449,6 +1449,42 @@ def scenario_31_redemption_order_is_total():
         assert all(b.debt_now(b.troves[i]) == d for i, d in before.items() if i != tid), "a Trove out of turn was touched"
         check_invariants(s, f"31 after {tid}")
     return f"order {expected} after Trove 1 moved onto the lowest rate; redemption walked it Trove by Trove"
+
+
+def scenario_32_untagged_share_returns_to_the_borrower():
+    """SPEC V2: a frontend keeps its share of the Troves it brought; a Trove opened without a frontend (a command-line or
+    self-written client) has its whole share credited to its owner. Expected credits are computed here from each Trove's
+    own fee and interest -- floor(amount x 3 %), then the kickback split -- not read back from the registry."""
+    clock, s, b, weth, _ = setup()
+    fe = s.frontends
+    fid = fe.register("FE", 40 * PCT)
+    for who in ("tagged", "cli"):
+        fund(weth, who, 100 * E)
+    tt = b.open_trove("tagged", 100 * E, 50_000 * E, 10 * PCT, frontend=fid)
+    tc = b.open_trove("cli", 100 * E, 50_000 * E, 10 * PCT)                 # frontend 0: no frontend brought it
+    fee_t, fee_c = b.troves[tt].debt - 50_000 * E, b.troves[tc].debt - 50_000 * E
+    clock.warp(90 * DAY)
+    d_t, d_c = b.troves[tt].debt, b.troves[tc].debt
+    b.apply_pending_debt(tt)
+    b.apply_pending_debt(tc)
+    a_t, a_c = b.troves[tt].debt - d_t, b.troves[tc].debt - d_c              # each Trove's own interest (step B)
+
+    def share(x):
+        return x * 3 // 100                                                     # floor(x x 3 %)
+    # a credit is floored at each touch (the fee at opening, the interest at the next step B), never on a summed amount
+    kick = lambda r: r * 40 // 100
+    exp_cli = share(fee_c) + share(a_c)
+    exp_owner_t = kick(share(fee_t)) + kick(share(a_t))
+    exp_fe = share(fee_t) - kick(share(fee_t)) + share(a_t) - kick(share(a_t))
+    assert fe.claimable["cli"] == exp_cli, "V2: an untagged Trove's share must go to its owner"
+    assert fe.claimable["tagged"] == exp_owner_t, "V2: the kickback of a tagged Trove"
+    assert fe.claimable["FE"] == exp_fe, "V2: a frontend keeps its share of the Troves it brought"
+    assert exp_cli > 0 and exp_fe > 0
+    assert sum(fe.claimable.values()) == fe.total_credited, "every credit has an owner: nothing goes to an ownerless account"
+    for who in ("cli", "tagged", "FE"):
+        fe.claim(who)
+    check_invariants(s)
+    return f"untagged owner credited {exp_cli / E:.4f}; tagged: owner {exp_owner_t / E:.4f}, frontend {exp_fe / E:.4f}"
 
 
 SCENARIOS = [v for k, v in sorted(globals().items()) if k.startswith("scenario_")]

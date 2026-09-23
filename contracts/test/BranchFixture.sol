@@ -21,7 +21,7 @@ abstract contract BranchFixture is Test {
     uint256 constant E = 1e18;
     uint256 constant PCT = 1e16;
     uint256 constant START = 1_700_000_000;
-    uint256 constant N_ACCOUNTS = 9; // six users, two frontend payouts, the payout of untagged Troves
+    uint256 constant N_ACCOUNTS = 8; // six users, two frontend payouts
 
     StableToken stable;
     FrontendRegistry registry;
@@ -41,7 +41,7 @@ abstract contract BranchFixture is Test {
     function deployBranch(uint256 minDebt, uint256 cap0, uint256 capCeiling, uint256 gasDeposit) internal {
         vm.warp(START);
         stable = new StableToken("USDarli", "USDarli", address(this));
-        registry = new FrontendRegistry(IStableToken(address(stable)), 3 * PCT, account(8));
+        registry = new FrontendRegistry(IStableToken(address(stable)), 3 * PCT);
         feed = new MockPriceFeed(2000 * E);
         weth = new MockCollateral();
         uint256 n = vm.getNonce(address(this));

@@ -223,7 +223,7 @@ contract BranchManagerTest is BranchFixture {
         uint256 escrowBalance = stable.balanceOf(escrow);
         vm.prank(escrow);
         stable.transfer(alice, escrowBalance);
-        for (uint256 i = 6; i < 9; i++) {
+        for (uint256 i = 6; i < N_ACCOUNTS; i++) {
             vm.prank(account(i));
             registry.claim();
             uint256 b = stable.balanceOf(account(i));
@@ -270,6 +270,43 @@ contract BranchManagerTest is BranchFixture {
         vm.warp(block.timestamp + 30 days);
         manager.applyPendingDebt(t);
         assertGt(registry.claimable(bob), 0);
+    }
+
+    // --- SPEC V2: a frontend keeps its share; without one, the share is the owner's ----------------------------------------
+
+    /// Expected credits from each Trove's own fee and interest: floor(amount x 3 %) per touch, then the kickback split.
+    function test_untaggedShareReturnsToTheBorrower() public {
+        uint256 cli = _open(alice, 50 * E, 30_000 * E, 10 * PCT, 0); // no frontend: a command-line or own client
+        uint256 tagged = _open(bob, 50 * E, 30_000 * E, 10 * PCT, 2); // frontend 2 pays 40 % back to the owner
+        uint256 feeCli = manager.getTrove(cli).recordedDebt - 30_000 * E;
+        uint256 feeTagged = manager.getTrove(tagged).recordedDebt - 30_000 * E;
+        vm.warp(block.timestamp + 90 days);
+        uint256 dCli = manager.getTrove(cli).recordedDebt;
+        uint256 dTagged = manager.getTrove(tagged).recordedDebt;
+        manager.applyPendingDebt(cli);
+        manager.applyPendingDebt(tagged);
+        uint256 aCli = manager.getTrove(cli).recordedDebt - dCli;
+        uint256 aTagged = manager.getTrove(tagged).recordedDebt - dTagged;
+        assertEq(
+            registry.claimable(alice), _share(feeCli) + _share(aCli), "V2: an untagged Trove's share is its owner's"
+        );
+        uint256 kickFee = _share(feeTagged) * 40 / 100;
+        uint256 kickInterest = _share(aTagged) * 40 / 100;
+        assertEq(registry.claimable(bob), kickFee + kickInterest, "V2: the kickback of a tagged Trove");
+        assertEq(
+            registry.claimable(account(7)),
+            _share(feeTagged) - kickFee + _share(aTagged) - kickInterest,
+            "V2: a frontend keeps its share of the Troves it brought"
+        );
+        assertEq(
+            registry.claimable(alice) + registry.claimable(bob) + registry.claimable(account(7)),
+            registry.totalCredited(),
+            "V2: every credit has an owner"
+        );
+    }
+
+    function _share(uint256 x) internal pure returns (uint256) {
+        return x * 3 / 100;
     }
 
     // --- SPEC V2: kickback only rises, and only its payout may raise it -------------------------------------------------------

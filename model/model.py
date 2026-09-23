@@ -261,7 +261,6 @@ class OracleFeed:
 # --------------------------------------------------------------------------- #
 class FrontendRegistry:
     ADDR = "FrontendRegistry"
-    INCENTIVES = "IncentiveController"
 
     def __init__(self, stable, share):
         self.stable = stable
@@ -293,7 +292,9 @@ class FrontendRegistry:
         reward = x * self.share // WAD          # rounds DOWN
         self.total_credited += reward
         if fid == 0:
-            self.claimable[self.INCENTIVES] += reward
+            # SPEC V2: no frontend brought this Trove (a command-line or self-written client), so its share goes back to
+            # the owner, exactly as a self-referral with full kickback would
+            self.claimable[owner] += reward
             return
         fe = self.frontends[fid]
         to_owner = reward * fe["kickback"] // WAD

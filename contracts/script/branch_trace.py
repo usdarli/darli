@@ -21,6 +21,9 @@ E, PCT, DAY = WAD, WAD // 100, 86_400
 N_USERS = 6
 STEPS, SHUTDOWN_FROM = 700, 600          # the shutdown triggers only in the last 100 steps: a shutdown ends borrowing
 CHECK_EVERY = 25
+EPISODES = {s + i: e for s in (150, 250, 350, 450, 550) for i, e in enumerate(("valid", "fund", "aim", "liq"))}
+# scripted dust repayments (B4): an owner who can pay tries to leave its Trove just under the minimum debt
+EPISODES.update({s: "dust" for s in (200, 300, 400, 500)})
 START = 1_700_000_000                    # the model's clock; the replay warps to it before deploying
 
 # encodings shared with the Solidity replay
@@ -28,8 +31,8 @@ OPS = ["open", "borrow", "repay", "add", "withdraw", "adjust", "rate", "close", 
        "status", "sp_dep", "sp_wd", "give", "fe_claim", "trigger", "poke", "liquidate", "sp_claim", "surplus"]
 STATUS = {VALID: 0, NETWORK_UNSTABLE: 1, PRICE_INVALID: 2, FAILED: 3}
 TROVE_STATUS = {ACTIVE: 1, ZOMBIE: 2, CLOSED_OWNER: 3, CLOSED_LIQ: 4, CLOSED_SETTLED: 5}
-# accounts by index: the users, then the two frontend payouts and the payout of untagged Troves
-NAMES = [f"u{i}" for i in range(N_USERS)] + ["fe1", "fe2", "IncentiveController"]
+# accounts by index: the users, then the two frontend payouts
+NAMES = [f"u{i}" for i in range(N_USERS)] + ["fe1", "fe2"]
 
 CONFIG = dict(mcr=110 * PCT, ccr=150 * PCT, scr=110 * PCT, pen_sp=5 * PCT, pen_redist=10 * PCT, min_debt=2000 * E,
               debt_cap=400_000 * E, cap_ceiling=1_600_000 * E, gas_deposit=E // 1000)
@@ -85,6 +88,9 @@ def build(rng):
     queues, queue_len, full_flags = [], [], []
     ok_by_kind = {k: 0 for k in OPS}
     liq = dict(offset=0, redistributed=0, both=0, bad_debt=0, with_surplus=0)
+    aimed = 0                                                        # the Trove the last guided price was aimed at
+    episode_target = None
+    dust_refused = 0
     bad_by_kind = {k: 0 for k in OPS}
 
     def amt(lo, hi):
@@ -105,7 +111,24 @@ def build(rng):
         if step >= SHUTDOWN_FROM:
             kinds += ["trigger"] * 3 + ["poke"] * 2
         k = rng.choice(kinds)
-        if live and feed.status == VALID and b.tcr(feed.price) < b.ccr and rng.random() < 0.4:
+        # scripted episodes, at fixed steps: fund the pool, aim a price at the smallest Trove, liquidate it. They are
+        # ordinary operations; they make sure liquidations that leave the owner a surplus happen, whatever the seed
+        episode = EPISODES.get(step)
+        if episode == "valid":
+            # the target: the smallest Trove whose 107 % price keeps the branch at or above 112 %, so aiming at it
+            # neither shuts the branch down nor is refused
+            debt_total, coll_total = b.agg_debt + b.pending_agg_interest(), b.active_coll + b.default_coll
+            fits = [t for t in live if b.debt_now(t) and coll_total * (107 * PCT * b.debt_now(t) // b.coll_now(t))
+                    // max(debt_total, 1) >= 112 * PCT]
+            # ... and, among those, one the pool can be funded to absorb in full: the richest user's balance plus what
+            # the pool already holds above its residual
+            richest = max(s.stable.bal[NAMES[i]] for i in range(N_USERS))
+            coverable = [t for t in fits if b.debt_now(t) + 1_000 * E <= b.sp.total - 10**18 + richest]
+            episode_target = min(coverable or fits, key=lambda t: b.debt_now(t), default=None)
+        smallest = episode_target if episode else None
+        if episode:
+            k = {"valid": "status", "fund": "sp_dep", "aim": "price", "liq": "liquidate", "dust": "repay"}[episode]
+        elif live and feed.status == VALID and b.tcr(feed.price) < b.ccr and rng.random() < 0.4:
             k = "adjust"                                     # below CCR: recovery mode is what needs exercising
         elif feed.status == VALID and b.shutdown_at == 0 and rng.random() < 0.5 and \
                 any(b.debt_now(t) and b.icr(t, feed.price) < b.mcr for t in live):
@@ -117,13 +140,15 @@ def build(rng):
         if k in ("borrow", "repay", "add", "withdraw", "adjust", "rate", "close", "apply", "transfer", "liquidate") and not every:
             k = "open"
         caller, a, bb, c, d, touched = 0, 0, 0, 0, 0, 0
+        dust_try = False
         target = None
         result = {}
         if k == "liquidate":
             # mostly a Trove that is below MCR now; otherwise any Trove, which must be refused
             under = [t for t in live if b.debt_now(t) and b.icr(t, feed.price) < b.mcr]
             if under and rng.random() < 0.85:
-                target = rng.choice(under)
+                aimed_now = [t for t in under if t.id == aimed]
+                target = aimed_now[0] if aimed_now else rng.choice(under)
             else:
                 target = rng.choice(every)
             touched, caller = target.id, rng.randrange(N_USERS)
@@ -152,6 +177,17 @@ def build(rng):
         elif k == "borrow":
             a = amt(1, 6_000)
             fn = lambda: b.borrow(target.id, a)
+        elif k == "repay" and episode == "dust":
+            payers = [t for t in live if b.debt_now(t) > b.min_debt
+                      and s.stable.bal[t.owner] >= b.debt_now(t) - b.min_debt + 10**6]
+            if payers:
+                target = rng.choice(payers)
+                touched, caller = target.id, NAMES.index(target.owner)
+                a = b.debt_now(target) - b.min_debt + rng.randint(1, 10**6)   # leaves 1 .. 1e6 wei under the minimum
+                dust_try = True
+            else:
+                a = amt(1, 30_000)                                             # nobody can pay: an ordinary repayment
+            fn = lambda: b.repay(target.id, a)
         elif k == "repay":
             a = amt(1, 30_000)
             fn = lambda: b.repay(target.id, a)
@@ -195,10 +231,19 @@ def build(rng):
             debt_total, coll_total = b.agg_debt + b.pending_agg_interest(), b.active_coll + b.default_coll
             weakest = min(live, key=lambda t: b.coll_now(t) * WAD // max(b.debt_now(t), 1), default=None)
             a = 0
-            if weakest is not None and b.debt_now(weakest) and rng.random() < 0.5:
-                # guided: the weakest Trove just below MCR (sometimes under water), if the branch stays above SCR
-                # under water, or between the pool's premium and MCR, where an offset leaves the owner a surplus (L3)
-                target = rng.randint(95, 105) if rng.random() < 0.5 else rng.randint(106, 109)
+            if episode == "aim" and smallest is not None:
+                # scripted: the smallest Trove at an ICR of 107 %, between the pool's premium and MCR (L3 surplus)
+                p = 107 * PCT * b.debt_now(smallest) // b.coll_now(smallest)
+                if coll_total * p // debt_total >= 112 * PCT:
+                    a, aimed = p, smallest.id
+            elif weakest is not None and b.debt_now(weakest) and len(live) >= 2 and rng.random() < 0.5:
+                # guided: the weakest Trove just below MCR (sometimes under water), if the branch stays above SCR and
+                # another Trove is there to take a redistribution (a lone Trove would become bad debt and end the trace).
+                # The band between the pool's premium and MCR leaves the owner a surplus (L3), but only when the pool can
+                # absorb the whole debt, so it is aimed at only then
+                pool_absorbs = b.sp.total - 10**18 >= b.debt_now(weakest)
+                target = rng.randint(106, 109) if pool_absorbs and rng.random() < 0.7 else rng.randint(95, 105)
+                aimed = weakest.id                                   # liquidated first, while it is below MCR
                 p = target * PCT * b.debt_now(weakest) // b.coll_now(weakest)
                 if coll_total * p // debt_total >= 112 * PCT:
                     a = p
@@ -213,6 +258,9 @@ def build(rng):
         elif k == "fail":
             k, a = "status", STATUS[FAILED]
             fn = lambda: setattr(feed, "status", FAILED)
+        elif k == "status" and episode == "valid":
+            a = STATUS[VALID]
+            fn = lambda: setattr(feed, "status", VALID)
         elif k == "status":
             choices = [VALID] * 4 + [PRICE_INVALID, NETWORK_UNSTABLE] + ([FAILED] if step >= SHUTDOWN_FROM else [])
             st = rng.choice(choices)
@@ -220,7 +268,12 @@ def build(rng):
             fn = lambda: setattr(feed, "status", st)
         elif k == "sp_dep":
             caller = rng.randrange(N_USERS)
-            a = amt(1, 20_000)
+            a = amt(1, 60_000)
+            if episode == "fund":
+                # scripted: the richest user funds the pool to cover the smallest Trove, if it can
+                caller = max(range(N_USERS), key=lambda i: s.stable.bal[NAMES[i]])
+                need = b.debt_now(smallest) - (b.sp.total - 10**18) + 1_000 * E if smallest else 0
+                a = max(1, min(s.stable.bal[NAMES[caller]], need))
             fn = lambda: b.sp.deposit(NAMES[caller], a)
         elif k == "sp_wd":
             caller = rng.randrange(N_USERS)
@@ -249,6 +302,7 @@ def build(rng):
         except Revert:
             ok = 0
         (ok_by_kind if ok else bad_by_kind)[k] += 1
+        dust_refused += dust_try and not ok
         if ok and k == "liquidate":
             liq["offset"] += result["X"] > 0
             liq["redistributed"] += result["Y"] > 0 and not result["bad"]
@@ -271,6 +325,7 @@ def build(rng):
 
     ledger_len = LEDGER_BASE + PER_ACCOUNT * len(NAMES)
     assert len(ledger) == STEPS * ledger_len
+    assert dust_refused >= 2, f"only {dust_refused} repayments leaving dust were tried and refused (B4)"
     assert liq["offset"] >= 5 and liq["redistributed"] >= 5 and liq["both"] >= 1 and liq["with_surplus"] >= 3, liq
     assert b.shutdown_at, "the trace must end with a shut-down branch"
     trace = {"ops": {k: [str(x) for x in v] for k, v in ops.items()},

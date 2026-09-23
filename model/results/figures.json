@@ -1,14 +1,14 @@
 {
   "contracts": {
-    "branch_trace_accepted": "471",
+    "branch_trace_accepted": "444",
     "branch_trace_full_checks": "28",
-    "branch_trace_liquidations": "27",
-    "branch_trace_liquidations_offset": "13",
-    "branch_trace_liquidations_redistributed": "24",
-    "branch_trace_refused": "229",
+    "branch_trace_liquidations": "23",
+    "branch_trace_liquidations_offset": "15",
+    "branch_trace_liquidations_redistributed": "17",
+    "branch_trace_refused": "256",
     "branch_trace_steps": "700",
-    "branch_trace_troves": "39",
-    "declared_tests": "76",
+    "branch_trace_troves": "32",
+    "declared_tests": "77",
     "list_vector_max_size": "80",
     "list_vector_operations": "561",
     "list_vector_queues_checked": "485",
@@ -34,7 +34,7 @@
     "fuzz_ops_sp_dep": "61",
     "fuzz_ops_urgent": "37",
     "fuzz_shutdowns": "33",
-    "fuzz_stats": "{'ok': 4252, 'reverted': 903, 'max_eps': 17, 'max_ratio': 0.4444444444444444, 'shutdowns': 33, 'with_bad_debt': 18, 'troves_rewarded': 51, 'gas_paid_total': 51000000000000000}",
+    "fuzz_stats": "{'ok': 4253, 'reverted': 904, 'max_eps': 17, 'max_ratio': 0.4444444444444444, 'shutdowns': 33, 'with_bad_debt': 18, 'troves_rewarded': 51, 'gas_paid_total': 51000000000000000}",
     "fuzz_troves_rewarded": "51"
   },
   "fuzz_oracle": {
@@ -42,12 +42,12 @@
   },
   "mutants": {
     "mutants_invalid": "0",
-    "mutants_killed": "33",
+    "mutants_killed": "34",
     "mutants_killed_by_a_fuzzer": "13",
     "mutants_killed_by_fuzz": "7",
     "mutants_killed_by_fuzz_oracle": "6",
     "mutants_survived": "0",
-    "mutants_total": "33"
+    "mutants_total": "34"
   },
   "scenarios": {
     "claim_order_earlier_claims": "100",
@@ -65,8 +65,8 @@
     "path_gas_paid_eth": "0.030",
     "path_gas_posted_eth": "0.030",
     "path_tolerance_wei": "6",
-    "scenarios_passed": "31",
-    "scenarios_total": "31",
+    "scenarios_passed": "32",
+    "scenarios_total": "32",
     "settle_batch_size": "50",
     "settle_batches": "30",
     "settle_troves": "1,500",

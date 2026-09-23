@@ -12,7 +12,8 @@ import {FixedPointMath} from "../libraries/FixedPointMath.sol";
 ///         share of each amount here at mint time, rounded UP (`recordDeposit`), and credits the Trove's frontend and
 ///         owner in step B, rounded DOWN (`credit`), so the balance always covers what is claimable. A caller is a branch
 ///         exactly when the stablecoin lists it as a minter: the minter set is sealed at deployment, so this registry
-///         needs no list of its own and no one who could change it.
+///         needs no list of its own and no one who could change it. A Trove opened without a frontend credits the
+///         whole share to its owner.
 contract FrontendRegistry is IFrontendRegistry {
     struct Frontend {
         address payout;
@@ -22,8 +23,6 @@ contract FrontendRegistry is IFrontendRegistry {
     IStableToken public immutable stableToken;
     /// @notice FRONTEND_SHARE of SPEC §2, WAD.
     uint256 public immutable share;
-    /// @notice receives the share of Troves opened without a frontend; fixed at deployment.
-    address public immutable untaggedPayout;
 
     uint32 public count = 1;
     mapping(uint32 => Frontend) public frontends;
@@ -37,12 +36,10 @@ contract FrontendRegistry is IFrontendRegistry {
 
     error KickbackOutOfRange();
 
-    constructor(IStableToken stable_, uint256 share_, address untaggedPayout_) {
+    constructor(IStableToken stable_, uint256 share_) {
         if (share_ > WAD) revert KickbackOutOfRange();
-        if (untaggedPayout_ == address(0)) revert InvalidRecipient();
         stableToken = stable_;
         share = share_;
-        untaggedPayout = untaggedPayout_;
     }
 
     modifier onlyBranch() {
@@ -84,7 +81,9 @@ contract FrontendRegistry is IFrontendRegistry {
         uint256 reward = FixedPointMath.mulDivDown(amount, share, WAD);
         totalCredited += reward;
         if (frontendId == 0) {
-            claimable[untaggedPayout] += reward;
+            // no frontend brought this Trove (a command-line or self-written client): the whole share is its owner's,
+            // exactly as a self-referral with full kickback would be (SPEC V2)
+            claimable[troveOwner] += reward;
             return;
         }
         if (frontendId >= count) revert UnknownFrontend(frontendId);
