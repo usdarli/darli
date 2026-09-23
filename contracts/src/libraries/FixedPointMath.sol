@@ -49,8 +49,14 @@ library FixedPointMath {
     }
 
     /// @notice Step B of SPEC B1: interest of one trove, rounded DOWN.
+    /// @dev floor(recordedDebt * annualRate * elapsed / (YEAR * WAD)), exact wherever the RESULT fits in 256 bits.
+    ///      The product is factored as recordedDebt * (annualRate * elapsed) on purpose. `annualRate` is capped by the
+    ///      protocol at 250 % (< 2^62) and `elapsed` is a span of block timestamps (< 2^64), so their product cannot
+    ///      overflow; `recordedDebt` has no comparable bound, so it is the factor that must go through the 512-bit path.
+    ///      Multiplying recordedDebt * annualRate first reverted above ~4.6e58 of debt although the model returns a value
+    ///      there (differential vectors: the large-debt block of `stepB`).
     function troveInterest(uint256 recordedDebt, uint256 annualRate, uint256 elapsed) internal pure returns (uint256) {
-        return mulDivDown(recordedDebt * annualRate, elapsed, YEAR_TIMES_WAD);
+        return mulDivDown(recordedDebt, annualRate * elapsed, YEAR_TIMES_WAD);
     }
 
     uint256 private constant YEAR_TIMES_WAD = 365 days * WAD;

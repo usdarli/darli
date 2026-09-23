@@ -4,8 +4,8 @@ Every listed file must exist with the recorded hash, every file the recorded res
 appear twice, and an empty manifest is a failure.
 
 The manifest covers `model/` and `docs/SPEC.md`, and also `contracts/` and the two pinned submodules, because the run
-record makes claims about them too: "1,228 vectors, identical to the shipped file" and "forge test: 31 passed" mean
-nothing without knowing which Solidity sources, which `foundry.toml` and which version of OpenZeppelin produced them.
+record makes claims about them too: the vector count and the forge test result mean nothing without knowing which
+Solidity sources, which `foundry.toml` and which version of OpenZeppelin produced them.
 
     python3 check_manifest.py            verify
     python3 check_manifest.py --write    regenerate both tables in docs/RESULTS.md, then read the diff
@@ -28,6 +28,7 @@ REQUIRED = [
     "model/results/figures.json",
     "docs/SPEC.md",
     "contracts/foundry.toml", "contracts/remappings.txt", "contracts/script/export_vectors.py",
+    "contracts/script/check_test_count.py",
     "contracts/test/vectors/math.json",
 ]
 SUBMODULES = ["contracts/lib/forge-std", "contracts/lib/openzeppelin-contracts"]

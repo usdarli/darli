@@ -1,4 +1,9 @@
 {
+  "contracts": {
+    "declared_tests": "37",
+    "vectors_stepB_beyond_256_bit_product": "64",
+    "vectors_total": "1,292"
+  },
   "econ_sim": {
     "econ_sim_passed": "8",
     "econ_sim_total": "8"

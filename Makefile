@@ -10,6 +10,7 @@
 #   make fmt        format the Solidity (read `forge fmt` in AGENTS.md 7 first)
 
 MAKEFLAGS += --no-print-directory
+SHELL := /bin/bash
 PY ?= python3
 .PHONY: help smoke evidence contracts check record fmt clean
 
@@ -35,6 +36,7 @@ evidence:
 	cd model && $(PY) fuzz.py 30 300
 	cd model && $(PY) fuzz_oracle.py 200 150
 	cd model && $(PY) mutants.py
+	cd contracts && $(PY) script/export_vectors.py ../model
 	cd model && $(PY) spec_check.py
 	cd model && $(PY) check_figures.py
 	cd model && $(PY) check_manifest.py
@@ -42,6 +44,7 @@ evidence:
 
 record:
 	cd model && $(PY) test_scenarios.py && $(PY) test_econ_sim.py && $(PY) fuzz.py 30 300 && $(PY) fuzz_oracle.py 200 150 && $(PY) mutants.py
+	cd contracts && $(PY) script/export_vectors.py ../model
 	cd model && $(PY) check_figures.py --write
 	cd model && $(PY) check_manifest.py --write
 	@echo "regenerated: read the diff before committing it"
@@ -51,7 +54,7 @@ contracts:
 	cd contracts && forge fmt --check
 	cd contracts && $(PY) script/export_vectors.py ../model
 	git diff --exit-code -- contracts/test/vectors
-	cd contracts && forge test
+	cd contracts && set -o pipefail && forge test | $(PY) script/check_test_count.py
 
 fmt:
 	cd contracts && forge fmt

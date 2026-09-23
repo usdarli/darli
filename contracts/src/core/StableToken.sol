@@ -44,6 +44,12 @@ contract StableToken is ERC20Permit, IStableToken {
         _mint(to, amount);
     }
 
+    /// @notice A minter burns from ANY holder, without an allowance. That is deliberate -- repayment, redemption and the
+    ///         Stability Pool offset all burn tokens the protocol is settling, and an allowance round-trip would add a
+    ///         step a user could fail to take -- and it is the whole trust boundary of this token: every holder's balance
+    ///         is exactly as safe as the branch contracts are. SPEC 10.5 therefore requires a branch to burn only from the
+    ///         account that initiated the operation, or from the protocol's own accounts. This token cannot check that;
+    ///         the branches must, and their tests must show it.
     function burn(address from, uint256 amount) external {
         if (!isMinter[msg.sender]) revert NotAuthorized();
         _burn(from, amount);

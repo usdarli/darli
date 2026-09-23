@@ -18,6 +18,7 @@ document silently stopped depending on.
 
 Producers, each rewriting only its own group:
     python3 test_scenarios.py · python3 test_econ_sim.py · python3 fuzz.py 30 300 · python3 fuzz_oracle.py 200 150 · python3 mutants.py
+    python3 ../contracts/script/export_vectors.py .   (vector counts and the number of declared Foundry tests)
 """
 import os
 import re
@@ -34,6 +35,7 @@ PRODUCERS = {
     "fuzz": "python3 fuzz.py 30 300",
     "fuzz_oracle": "python3 fuzz_oracle.py 200 150",
     "mutants": "python3 mutants.py",
+    "contracts": "python3 ../contracts/script/export_vectors.py .",
 }
 
 

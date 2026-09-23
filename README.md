@@ -51,7 +51,7 @@ An immutable, ETH-backed stablecoin protocol for Base: borrowers set their own i
 
 ## Open items before implementation
 
-See `docs/SPEC.md` §13: β, the gas deposit amount, oracle thresholds from a fork test, the PoolManager storage layout used after a failed pool initialisation, the vault's quote asset and position maths, DARLI supply and distribution, persistent failure in the shared settlement path, and legal review before any deployment.
+See `docs/SPEC.md` §13: β, the gas deposit amount, oracle thresholds from a fork test, the PoolManager storage layout used after a failed pool initialisation, the vault's quote asset and position maths, DARLI supply and distribution, persistent failure in the shared settlement path, how each branch learns the stablecoin's address, and legal review before any deployment.
 
 ## Comparison with similar protocols
 

@@ -76,7 +76,7 @@ If any of these fails before your change, stop and report; do not start from a b
 
 ## 6. Things that are genuinely open (do not silently decide them)
 
-See `docs/SPEC.md` §13: β, the gas deposit amount, oracle stipend and thresholds from a fork test, the PoolManager storage layout used after a failed pool initialisation, the vault's quote asset and position maths, DARLI supply and distribution, persistent failure in the shared settlement path, and legal review. A task that needs one of these decided should propose, with evidence, and stop.
+See `docs/SPEC.md` §13: β, the gas deposit amount, oracle stipend and thresholds from a fork test, the PoolManager storage layout used after a failed pool initialisation, the vault's quote asset and position maths, DARLI supply and distribution, persistent failure in the shared settlement path, how each branch learns the stablecoin's address, and legal review. A task that needs one of these decided should propose, with evidence, and stop.
 
 ## 7. Style
 
