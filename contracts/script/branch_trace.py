@@ -1,10 +1,12 @@
 """
-A borrower trace from the reference model, for BranchManager.t.sol to replay (SPEC 4, 8, 6.5 triggers).
+A branch trace from the reference model, for BranchManager.trace.t.sol to replay (SPEC 4, 6, 8).
 
 The model's branch is driven through a random sequence of borrower operations -- open, borrow, repay, add and withdraw
-collateral, the combined adjustment, rate changes, close, applying pending debt, NFT transfers -- together with time,
-price and oracle-status changes, Stability Pool deposits (which decide the split of SPEC V1), frontend claims, stablecoin
-transfers between users and, in the last part only, the shutdown triggers. Each step records the operation, whether the
+collateral, the combined adjustment, rate changes, close, applying pending debt, NFT transfers -- and of liquidations,
+together with time, price and oracle-status changes, Stability Pool deposits, withdrawals and claims, surplus claims,
+frontend claims, stablecoin transfers between users and, in the last part only, the shutdown triggers. Guided price moves
+put a Trove just below MCR (so liquidations happen, some offset against the pool, some redistributed, some both) and put
+the branch below CCR (so recovery mode is tried). Each step records the operation, whether the
 model accepted it, and afterwards the whole aggregate ledger, every balance the branch can move, and the Trove the
 operation touched; every CHECK_EVERY steps and at the end, every Trove and the redemption queue as well.
 
@@ -23,7 +25,7 @@ START = 1_700_000_000                    # the model's clock; the replay warps t
 
 # encodings shared with the Solidity replay
 OPS = ["open", "borrow", "repay", "add", "withdraw", "adjust", "rate", "close", "apply", "transfer", "warp", "price",
-       "status", "sp_dep", "sp_wd", "give", "fe_claim", "trigger", "poke"]
+       "status", "sp_dep", "sp_wd", "give", "fe_claim", "trigger", "poke", "liquidate", "sp_claim", "surplus"]
 STATUS = {VALID: 0, NETWORK_UNSTABLE: 1, PRICE_INVALID: 2, FAILED: 3}
 TROVE_STATUS = {ACTIVE: 1, ZOMBIE: 2, CLOSED_OWNER: 3, CLOSED_LIQ: 4, CLOSED_SETTLED: 5}
 # accounts by index: the users, then the two frontend payouts and the payout of untagged Troves
@@ -40,19 +42,28 @@ def ledger_vector(s, b, weth):
     v = [b.agg_debt, b.agg_w, b.last_agg_update, b.bad_debt, b.shutdown_at, int(b.oracle_failed), b.active_coll,
          b.default_coll, b.gas_pool, b.n_open, b.total_stakes, b.settle_price or 0, b.unsettled, s.stable.supply,
          s.stable.bal[s.ESCROW], s.stable.bal[fe.ADDR], s.stable.bal[sp.addr], weth.bal[b.vault], b.vault_accounted,
-         fe.total_deposited, fe.total_credited, sp.total, b.feed.last_good]
+         fe.total_deposited, fe.total_credited, sp.total, b.feed.last_good,
+         b.L_coll, b.L_debt, b.err_lc, b.err_ld, b.stakes_snap, b.coll_snap, b.bad_debt_coll,
+         sp.P, sp.scale, sp.err_coll, sp.err_yield, sp.S[sp.scale], sp.B[sp.scale], weth.bal[sp.addr]]
     for name in NAMES:
-        v += [s.stable.bal[name], weth.bal[name], fe.claimable[name]]
+        v += [s.stable.bal[name], weth.bal[name], fe.claimable[name], b.surplus[name], sp.compounded(name),
+              sp.pending_coll(name), sp.pending_yield(name), sp.claim_coll[name], sp.claim_yield[name]]
     return v
+
+
+LEDGER_BASE, PER_ACCOUNT = 37, 9
 
 
 def trove_vector(b, tid):
     t = b.troves.get(tid)
     if t is None:
-        return [tid] + [0] * 9
+        return [tid] + [0] * (TROVE_LEN - 1)
     owner = NAMES.index(t.owner) + 1 if t.status in (ACTIVE, ZOMBIE) else 0
     return [tid, t.coll, t.debt, t.rate, t.stake, t.last_debt_update, t.last_rate_adjust, TROVE_STATUS[t.status],
-            b.gas_left.get(tid, 0), owner]
+            b.gas_left.get(tid, 0), owner, t.snap_lc, t.snap_ld]
+
+
+TROVE_LEN = 12
 
 
 
@@ -73,6 +84,7 @@ def build(rng):
     ledger, troves, troves_len = [], [], []
     queues, queue_len, full_flags = [], [], []
     ok_by_kind = {k: 0 for k in OPS}
+    liq = dict(offset=0, redistributed=0, both=0, bad_debt=0, with_surplus=0)
     bad_by_kind = {k: 0 for k in OPS}
 
     def amt(lo, hi):
@@ -88,21 +100,35 @@ def build(rng):
         every = list(b.troves.values())
         kinds = ["open"] * 8 + ["borrow"] * 4 + ["repay"] * 5 + ["add"] * 3 + ["withdraw"] * 3 + ["adjust"] * 8 + \
                 ["rate"] * 4 + ["close"] * 3 + ["apply"] * 2 + ["transfer"] * 2 + ["warp"] * 6 + ["price"] * 4 + \
-                ["status"] * 2 + ["sp_dep"] * 3 + ["sp_wd"] * 2 + ["give"] * 5 + ["fe_claim"] * 2
+                ["status"] * 2 + ["sp_dep"] * 4 + ["sp_wd"] * 2 + ["give"] * 5 + ["fe_claim"] * 2 + \
+                ["liquidate"] * 5 + ["sp_claim"] * 2 + ["surplus"] * 2
         if step >= SHUTDOWN_FROM:
             kinds += ["trigger"] * 3 + ["poke"] * 2
         k = rng.choice(kinds)
         if live and feed.status == VALID and b.tcr(feed.price) < b.ccr and rng.random() < 0.4:
             k = "adjust"                                     # below CCR: recovery mode is what needs exercising
+        elif feed.status == VALID and b.shutdown_at == 0 and rng.random() < 0.5 and \
+                any(b.debt_now(t) and b.icr(t, feed.price) < b.mcr for t in live):
+            k = "liquidate"                                  # a Trove is below MCR: liquidation is what needs exercising
         if step == STEPS - 30:
             k = "fail"                                       # the oracle fails for good ...
         elif step == STEPS - 29:
             k = "poke"                                       # ... and the branch observes it: the rest runs shut down
-        if k in ("borrow", "repay", "add", "withdraw", "adjust", "rate", "close", "apply", "transfer") and not every:
+        if k in ("borrow", "repay", "add", "withdraw", "adjust", "rate", "close", "apply", "transfer", "liquidate") and not every:
             k = "open"
         caller, a, bb, c, d, touched = 0, 0, 0, 0, 0, 0
         target = None
-        if k in ("borrow", "repay", "add", "withdraw", "adjust", "rate", "close", "apply", "transfer"):
+        result = {}
+        if k == "liquidate":
+            # mostly a Trove that is below MCR now; otherwise any Trove, which must be refused
+            under = [t for t in live if b.debt_now(t) and b.icr(t, feed.price) < b.mcr]
+            if under and rng.random() < 0.85:
+                target = rng.choice(under)
+            else:
+                target = rng.choice(every)
+            touched, caller = target.id, rng.randrange(N_USERS)
+            fn = lambda: result.update(b.liquidate(target.id, NAMES[caller]))
+        elif k in ("borrow", "repay", "add", "withdraw", "adjust", "rate", "close", "apply", "transfer"):
             # mostly open Troves; now and then a closed one, which every operation must refuse
             pool = live if live and rng.random() < 0.93 else every
             if k == "transfer":
@@ -113,7 +139,9 @@ def build(rng):
                 target = rng.choice(pool)
                 touched = target.id
                 caller = NAMES.index(target.owner) if target.status in (ACTIVE, ZOMBIE) else rng.randrange(N_USERS)
-        if k == "open":
+        if k == "liquidate":
+            pass
+        elif k == "open":
             u = rng.randrange(N_USERS)
             debt = amt(1_000, 60_000)
             coll = debt * rng.randint(105, 400) // 100 * E // max(feed.price, 1)
@@ -165,7 +193,18 @@ def build(rng):
             fn = lambda: clock.warp(a)
         elif k == "price":
             debt_total, coll_total = b.agg_debt + b.pending_agg_interest(), b.active_coll + b.default_coll
-            if rng.random() < 0.35 and debt_total and coll_total:
+            weakest = min(live, key=lambda t: b.coll_now(t) * WAD // max(b.debt_now(t), 1), default=None)
+            a = 0
+            if weakest is not None and b.debt_now(weakest) and rng.random() < 0.5:
+                # guided: the weakest Trove just below MCR (sometimes under water), if the branch stays above SCR
+                # under water, or between the pool's premium and MCR, where an offset leaves the owner a surplus (L3)
+                target = rng.randint(95, 105) if rng.random() < 0.5 else rng.randint(106, 109)
+                p = target * PCT * b.debt_now(weakest) // b.coll_now(weakest)
+                if coll_total * p // debt_total >= 112 * PCT:
+                    a = p
+            if a:
+                pass
+            elif rng.random() < 0.35 and debt_total and coll_total:
                 # guided: put the branch below CCR but above SCR, where the recovery-mode rules of B8 apply
                 a = rng.randint(115, 148) * PCT * debt_total // coll_total
             else:
@@ -175,7 +214,7 @@ def build(rng):
             k, a = "status", STATUS[FAILED]
             fn = lambda: setattr(feed, "status", FAILED)
         elif k == "status":
-            choices = [VALID, VALID, PRICE_INVALID, NETWORK_UNSTABLE] + ([FAILED] if step >= SHUTDOWN_FROM else [])
+            choices = [VALID] * 4 + [PRICE_INVALID, NETWORK_UNSTABLE] + ([FAILED] if step >= SHUTDOWN_FROM else [])
             st = rng.choice(choices)
             a = STATUS[st]
             fn = lambda: setattr(feed, "status", st)
@@ -194,6 +233,12 @@ def build(rng):
         elif k == "fe_claim":
             caller = rng.randrange(len(NAMES))
             fn = lambda: fe.claim(NAMES[caller])
+        elif k == "sp_claim":
+            caller = rng.randrange(N_USERS)
+            fn = lambda: b.sp.claim(NAMES[caller])
+        elif k == "surplus":
+            caller = rng.randrange(N_USERS)
+            fn = lambda: b.claim_surplus(NAMES[caller])
         elif k == "trigger":
             fn = b.trigger_shutdown
         else:
@@ -204,6 +249,12 @@ def build(rng):
         except Revert:
             ok = 0
         (ok_by_kind if ok else bad_by_kind)[k] += 1
+        if ok and k == "liquidate":
+            liq["offset"] += result["X"] > 0
+            liq["redistributed"] += result["Y"] > 0 and not result["bad"]
+            liq["both"] += result["X"] > 0 and result["Y"] > 0 and not result["bad"]
+            liq["bad_debt"] += result["bad"]
+            liq["with_surplus"] += result["surplus"] > 0
         for key, v in zip(ops, (OPS.index(k), caller, touched, a, bb, c, d, ok)):
             ops[key].append(v)
         ledger += ledger_vector(s, b, weth)
@@ -218,14 +269,16 @@ def build(rng):
         full_flags.append(int(full))
         queues += order
 
-    assert len(ledger) == STEPS * (23 + 3 * len(NAMES))
+    ledger_len = LEDGER_BASE + PER_ACCOUNT * len(NAMES)
+    assert len(ledger) == STEPS * ledger_len
+    assert liq["offset"] >= 5 and liq["redistributed"] >= 5 and liq["both"] >= 1 and liq["with_surplus"] >= 3, liq
     assert b.shutdown_at, "the trace must end with a shut-down branch"
     trace = {"ops": {k: [str(x) for x in v] for k, v in ops.items()},
-             "ledger": [str(x) for x in ledger], "ledgerLen": str(23 + 3 * len(NAMES)),
+             "ledger": [str(x) for x in ledger], "ledgerLen": str(ledger_len), "troveLen": str(TROVE_LEN),
              "troves": [str(x) for x in troves], "trovesLen": [str(x) for x in troves_len],
              "queue": [str(x) for x in queues], "queueLen": [str(x) for x in queue_len],
              "full": [str(x) for x in full_flags],
              "config": {"users": str(N_USERS), "funding": str(FUNDING), "price0": str(PRICE0), "start": str(START)}}
     stats = dict(full_checks=sum(full_flags), steps=STEPS, ok=sum(ok_by_kind.values()), refused=sum(bad_by_kind.values()), ok_by_kind=ok_by_kind,
-                 bad_by_kind=bad_by_kind, shutdown=b.shutdown_at != 0, troves=len(b.troves))
+                 bad_by_kind=bad_by_kind, shutdown=b.shutdown_at != 0, troves=len(b.troves), liquidations=liq)
     return trace, stats

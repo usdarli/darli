@@ -71,7 +71,7 @@ script `spec_check.py` verifies that every `S-NN` named here exists and that eve
 A Trove is an NFT with `coll`, `recordedDebt`, `annualRate`, `stake`, redistribution snapshots, `lastDebtUpdate`, `lastRateAdjust`, `frontendId`, status ∈ {Active, Zombie, ClosedByOwner, ClosedByLiquidation, ClosedBySettlement}.
 
 ### 4.2 Two ledgers
-- **B1** Each branch keeps `aggDebt` and `aggWeightedDebtSum = Σ recordedDebt_i × rate_i`. Step A (every state change): mint `p = ceil(aggW × Δt / (YEAR × WAD))`, split as §8; then `aggDebt += p`. Step B (touched Trove): its own interest `floor(debt × rate × Δt / (YEAR × WAD))` is added to `recordedDebt`; no second mint; exact wherever the result fits in 256 bits, whatever the debt (Foundry `test_diff_stepB_roundsDown`, `testFuzz_troveInterest_equalsTheOldFactoringWhereItDidNotOverflow`, `test_diff_borrowerTraceMatchesModel`). A transfer of the Trove's NFT runs step B first, so what accrued before it is credited to the owner who held it (Foundry `test_transferCreditsTheOldOwnerFirst`). Time without any transaction changes nothing until the next step A. (S-01, S-05, S-11, M-1 step A rounds down)
+- **B1** Each branch keeps `aggDebt` and `aggWeightedDebtSum = Σ recordedDebt_i × rate_i`. Step A (every state change): mint `p = ceil(aggW × Δt / (YEAR × WAD))`, split as §8; then `aggDebt += p`. Step B (touched Trove): its own interest `floor(debt × rate × Δt / (YEAR × WAD))` is added to `recordedDebt`; no second mint; exact wherever the result fits in 256 bits, whatever the debt (Foundry `test_diff_stepB_roundsDown`, `testFuzz_troveInterest_equalsTheOldFactoringWhereItDidNotOverflow`, `test_diff_branchTraceMatchesModel`). A transfer of the Trove's NFT runs step B first, so what accrued before it is credited to the owner who held it (Foundry `test_transferCreditsTheOldOwnerFirst`). Time without any transaction changes nothing until the next step A. (S-01, S-05, S-11, M-1 step A rounds down)
 - **B2** Identity at every instant: `aggDebt + pendingAggInterest == Σ troveDebt(now) + badDebt + ε`, `ε ≥ 0`, `ε` bounded empirically (max observed 28 wei over 30 × 300 fuzz steps). (I-2, F)
 - **B3** Interest stops in both ledgers at `shutdownAt`: `t_eff = min(now, shutdownAt)` and `aggW = 0` after shutdown. (S-02, I-3, M-2)
 - **B4** Minimum debt: a Trove is never opened, increased or reactivated below it; a repayment may not take a Trove from ≥ minimum to a non-zero amount below it; a Trove already below it accepts any repayment. Raising the minimum never traps a loan. (S-06 `min_debt_increase`, F `min_debt`)
@@ -82,7 +82,7 @@ A Trove is an NFT with `coll`, `recordedDebt`, `annualRate`, `stake`, redistribu
 - **B7** `adjustRate` within 7 days of the last change costs the upfront fee on the whole debt and requires ICR ≥ MCR and TCR ≥ CCR afterwards; otherwise free. (S-13)
 
 ### 4.4 Risk gate
-- **B8** One shared gate `_requireRiskIncreaseAllowed(debtUp, collDown)` is used by every entry point. It requires: branch not shut down; a `Valid` price; ICR ≥ MCR after the operation; and below CCR, new debt only if TCR ≥ CCR afterwards and collateral out only together with a repayment worth at least as much. (S-15b, S-16, F, Foundry `test_diff_borrowerTraceMatchesModel`)
+- **B8** One shared gate `_requireRiskIncreaseAllowed(debtUp, collDown)` is used by every entry point. It requires: branch not shut down; a `Valid` price; ICR ≥ MCR after the operation; and below CCR, new debt only if TCR ≥ CCR afterwards and collateral out only together with a repayment worth at least as much. (S-15b, S-16, F, Foundry `test_diff_branchTraceMatchesModel`)
 - **B9** `repay`, `addColl`, `closeTrove`, Stability Pool withdrawal: given their own preconditions (open Trove, sufficient balance, no dust left, valid amount), they depend on no oracle price, no administrative permission and no optional callback into user code, and nothing in the protocol can switch them off while the branch is live. Authorisation of the caller over his own Trove and the transfers of the specified tokens are part of the operations themselves. (S-16 live part, F, Foundry `test_repayAddCollAndCloseNeverReadThePrice`, `test_riskReducingOperationsIgnoreEveryOracleStatus`; see §11 on what is and is not checked)
 - **B10** No pause of any kind exists; the only stop is a shutdown by the rules of §6.5. (S-09, S-16)
 
@@ -108,8 +108,8 @@ A Trove is an NFT with `coll`, `recordedDebt`, `annualRate`, `stake`, redistribu
 ## 6. Solvency (live branch)
 
 ### 6.1 Stability Pool
-- **SP1** Deposits accepted only while the branch is live; withdrawals never restricted, never need a price. (S-15a, S-16, F)
-- **SP2** Product/sum accounting with scale: an offset always leaves ≥ `MIN_SP_RESIDUAL` (1 token) in the pool, so `P > 0`; when `P < P_FLOOR` it is rescaled in a **loop**; a deposit is valid across `MAX_SCALE_DIFF = 8` rescalings and gains are read over all 8. (S-07, S-17, M-5 single `if` instead of a loop, M-8 gains read over two scales only)
+- **SP1** Deposits accepted only while the branch is live; withdrawals never restricted, never need a price. (S-15a, S-16, F, Foundry `test_depositsCloseAtShutdownWithdrawalsAndClaimsNeverDo`)
+- **SP2** Product/sum accounting with scale: an offset always leaves ≥ `MIN_SP_RESIDUAL` (1 token) in the pool, so `P > 0`; when `P < P_FLOOR` it is rescaled in a **loop**; a deposit is valid across `MAX_SCALE_DIFF = 8` rescalings and gains are read over all 8. (S-07, S-17, M-5 single `if` instead of a loop, M-8 gains read over two scales only, Foundry `test_diff_stabilityPoolMatchesModel`, `test_anOffsetAlwaysLeavesTheResidual`)
 - **SP3** Interest is credited to the pool at the moment it is minted (step A) only if `deposits ≥ MIN_SP_RESIDUAL`; otherwise that share goes to the escrow. A deposit made after a mint earns nothing from it. (S-03, S-04)
 - **SP4** Three separate bounds, not one. (a) *Truncation of scale history*: a deposit is read over at most `MAX_SCALE_DIFF = 8` rescalings of 1e9 each,
   so the gain it can no longer see is below `deposit × 1e-72`, negligible; this is a bound by construction. (b) *Rounding of the payout arithmetic*: payout
@@ -117,12 +117,12 @@ A Trove is an NFT with `coll`, `recordedDebt`, `annualRate`, `stake`, redistribu
   on S-17's domain. (c) *Observed*: worst underpayment measured in S-17 is 3 wei. 
 
 ### 6.2 Liquidation
-- **L1** Anyone may liquidate a Trove with ICR < MCR, given a `Valid` price, while the branch is live. A zero-debt Trove is not liquidatable. (F)
-- **L2** Waterfall: offset against the Stability Pool at ≤ 5 % premium; remainder redistributed to active Troves at ≤ 10 % premium; if no recipient exists, remainder → `badDebt` + `badDebtColl` and the branch shuts down. Premiums are caps: an under-water Trove hands over everything it has. (S-08, S-10)
-- **L3** Liquidator receives 0.5 % of collateral (cap 2 ETH) from the whole collateral, plus the Trove's gas deposit. Surplus after full settlement goes to the owner (`surplus`), claimable any time. (S-10, S-27)
+- **L1** Anyone may liquidate a Trove with ICR < MCR, given a `Valid` price, while the branch is live. A zero-debt Trove is not liquidatable. (F, Foundry `test_onlyATroveBelowMcrWithAValidPriceOnALiveBranchIsLiquidated`, `test_diff_branchTraceMatchesModel`)
+- **L2** Waterfall: offset against the Stability Pool at ≤ 5 % premium; remainder redistributed to active Troves at ≤ 10 % premium; if no recipient exists, remainder → `badDebt` + `badDebtColl` and the branch shuts down. Premiums are caps: an under-water Trove hands over everything it has. (S-08, S-10, Foundry `test_poolAbsorbsFirstAndTheRestIsRedistributed`, `test_premiumsAreCapsAnUnderwaterTroveHandsOverEverything`, `test_theLastTroveWithAnEmptyPoolBecomesBadDebtAndShutsTheBranch`)
+- **L3** Liquidator receives 0.5 % of collateral (cap 2 ETH) from the whole collateral, plus the Trove's gas deposit. Surplus after full settlement goes to the owner (`surplus`), claimable any time, without a price. (S-10, S-27, Foundry `test_liquidatorReceivesTheCappedBonusAndTheGasDeposit`, `test_surplusBelongsToTheOwnerAndIsClaimedWithoutAPrice`)
 
 ### 6.3 Redistribution
-- **L4** Accumulators `L_coll`, `L_debt` at `L_PRECISION = 1e36` with carried remainders; corrected stakes and system snapshots so that interaction order cannot shift shares. (S-10; no mutant yet targets the accumulators themselves)
+- **L4** Accumulators `L_coll`, `L_debt` at `L_PRECISION = 1e36` with carried remainders; corrected stakes and system snapshots so that interaction order cannot shift shares. (S-10, Foundry `test_diff_branchTraceMatchesModel`, `invariant_ledgersAgree`; no model mutant yet targets the accumulators themselves)
 
 ### 6.4 Bad debt (live)
 - **L5** Three distinct situations:
@@ -197,13 +197,13 @@ The Python model does not define contract boundaries; the following is the contr
   permissionless. Collateral comes from, and USDarli and collateral go to, the caller (Foundry `test_onlyTheOwnerOrAnApprovedAddressChangesTheTrove`).
 - Amount validation: zero amounts revert (Foundry `test_zeroAmountsAndUnknownFrontendsAreRefused`); collateral and debt inputs are 18-decimal normalised;
   a redemption request above the redeemer's balance reverts.
-- Burning: a branch burns USDarli only from the account that initiated the operation, or from the protocol's own accounts (the Stability Pool). `StableToken.burn` cannot check this (T1); the branches must, and their tests must show it (Foundry `test_repayBurnsFromTheCallerNeverFromTheOwner`; liquidation and redemption not yet built).
+- Burning: a branch burns USDarli only from the account that initiated the operation, or from the protocol's own accounts (the Stability Pool). `StableToken.burn` cannot check this (T1); the branches must, and their tests must show it (Foundry `test_repayBurnsFromTheCallerNeverFromTheOwner`; a liquidation burns the absorbed debt from the Stability Pool, `test_diff_branchTraceMatchesModel`; redemption not yet built).
 - Wiring: step A on request only by the branch's Stability Pool, step B on transfer only by its TroveNFT; the vault, the NFT and the queue accept changes
   only from their branch, the frontend registry only from a minter of the stablecoin (Foundry `test_wiredEntryPointsRefuseEveryoneElse`).
 - Internal functions (`_stepA`, `_touch`, `_redistribute`, `_endPhaseOne`, `_lateRecovery`, `_payGasDeposit`, `_sweepDustIfEmpty`) are never externally callable.
 - The redemption queue (`RateSortedList`) is changed only by its branch, fixed at construction, and makes no external call (Foundry
   `test_onlyTheBranchCanChangeTheList`, `test_constructorRejectsZeroBranch`). That it holds exactly the branch's Active Troves is the branch's duty
-  (Foundry `invariant_ledgersAgree`, `test_diff_borrowerTraceMatchesModel`).
+  (Foundry `invariant_ledgersAgree`, `test_diff_branchTraceMatchesModel`).
 - Every external entry point runs the reentrancy guard. A branch's own contracts (manager, vault, TroveNFT, queue, Stability Pool) call one another and
   the system's frontend registry; beyond them the core calls only the collateral token, the price feed (staticcall with a stipend) and the stablecoin;
   the revenue hand-over transfers to a fixed address and makes no call into it.

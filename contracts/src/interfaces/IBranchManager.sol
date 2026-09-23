@@ -34,10 +34,10 @@ interface IBranchManager {
     function debtCap() external view returns (uint256);
 }
 
-/// @notice SPEC §6.2–§6.4. Implemented with the Stability Pool.
+/// @notice SPEC §6.2–§6.4.
 interface ILiquidations {
     function liquidate(uint256 troveId) external returns (LiquidationValues memory);
-    function batchLiquidate(uint256[] calldata troveIds) external;
+    function claimSurplus() external returns (uint256);
 }
 
 /// @notice SPEC §5, the part inside one branch. Implemented with the CollateralRegistry.
@@ -68,5 +68,4 @@ interface ISettlement {
     function repayBadDebt(uint256 amount) external;
     /// @notice whatever written-off Troves handed over after phase 1, for the caller's exercised claim units (X9).
     function claimLate() external returns (uint256 collOut);
-    function claimSurplus() external returns (uint256);
 }

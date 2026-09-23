@@ -29,8 +29,8 @@ REQUIRED = [
     "docs/SPEC.md",
     "contracts/foundry.toml", "contracts/remappings.txt", "contracts/script/export_vectors.py",
     "contracts/script/check_test_count.py",
-    "contracts/test/vectors/math.json", "contracts/test/vectors/sorted_list.json", "contracts/test/vectors/borrower_trace.json",
-    "contracts/script/borrower_trace.py",
+    "contracts/test/vectors/math.json", "contracts/test/vectors/sorted_list.json", "contracts/test/vectors/branch_trace.json",
+    "contracts/test/vectors/stability_pool.json", "contracts/script/branch_trace.py", "contracts/script/sp_trace.py",
 ]
 SUBMODULES = ["contracts/lib/forge-std", "contracts/lib/openzeppelin-contracts"]
 

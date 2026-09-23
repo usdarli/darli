@@ -71,4 +71,5 @@ error RepayInFullWithClose();
 error UnknownFrontend(uint32 frontendId);
 error WithdrawalNotMatchedByRepayment();
 error ShortfallAboveDust();
+error TroveNotLiquidatable();
 error InvalidRecipient();

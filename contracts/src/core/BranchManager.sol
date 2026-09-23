@@ -5,7 +5,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
-import {IBranchManager} from "../interfaces/IBranchManager.sol";
+import {IBranchManager, ILiquidations} from "../interfaces/IBranchManager.sol";
 import {IBorrowerGateway} from "../interfaces/IBorrowerGateway.sol";
 import {IStableToken} from "../interfaces/IStableToken.sol";
 import {IPriceFeed} from "../interfaces/IPriceFeed.sol";
@@ -45,6 +45,10 @@ struct BranchConfig {
     uint256 capCeiling;
     uint256 gasDeposit;
     uint256 spShare;
+    uint256 penSp; // liquidation premium to the Stability Pool, a cap (SPEC 6.2)
+    uint256 penRedist; // liquidation premium on redistribution, a cap
+    uint256 liqBonus; // the liquidator's share of the collateral
+    uint256 liqBonusCap; // ... and its cap, in collateral units
 }
 
 /// @title BranchManager
@@ -57,7 +61,7 @@ struct BranchConfig {
 ///         owed), the frontend registry (the interfaces' share), the Trove NFT (ownership) and the redemption list. All
 ///         are contracts of this deployment except the collateral token and the feed; none of them calls into user code.
 ///         Liquidation, redemption and settlement (ILiquidations, IBranchRedemption, ISettlement) are later stages.
-contract BranchManager is IBranchManager, IBorrowerGateway, ReentrancyGuardTransient {
+contract BranchManager is IBranchManager, IBorrowerGateway, ILiquidations, ReentrancyGuardTransient {
     using SafeERC20 for IERC20;
 
     // --- wiring (immutable) -------------------------------------------------------------------------------------------
@@ -82,6 +86,10 @@ contract BranchManager is IBranchManager, IBorrowerGateway, ReentrancyGuardTrans
     uint256 public immutable capCeiling;
     uint256 public immutable gasDeposit;
     uint256 public immutable spShare;
+    uint256 public immutable penSp;
+    uint256 public immutable penRedist;
+    uint256 public immutable liqBonus;
+    uint256 public immutable liqBonusCap;
     uint256 public immutable createdAt;
 
     // --- aggregate ledger ---------------------------------------------------------------------------------------------
@@ -98,10 +106,13 @@ contract BranchManager is IBranchManager, IBorrowerGateway, ReentrancyGuardTrans
     uint256 public totalCollSnapshot;
     uint256 public lColl;
     uint256 public lDebt;
+    uint256 public lCollError; // remainders carried from one redistribution to the next (SPEC L4)
+    uint256 public lDebtError;
 
     // --- Troves -------------------------------------------------------------------------------------------------------
     mapping(uint256 => Trove) internal _troves;
     mapping(uint256 => uint256) public gasLeft;
+    mapping(address => uint256) public surplus; // collateral left over from a liquidation, the owner's (SPEC L3)
     uint256 public nextTroveId = 1;
     uint256 public nOpen;
     uint256 internal _lastZombie;
@@ -113,11 +124,16 @@ contract BranchManager is IBranchManager, IBorrowerGateway, ReentrancyGuardTrans
     event TroveClosed(uint256 indexed troveId, TroveStatus status);
     event InterestMinted(uint256 amount, uint256 toFrontends, uint256 toStabilityPool, uint256 toEscrow);
     event Shutdown(uint256 at, uint256 settlePrice);
+    event Liquidated(uint256 indexed troveId, address indexed liquidator, LiquidationValues values);
+    event SurplusClaimed(address indexed owner, uint256 amount);
 
     error InvalidConfig();
 
     constructor(BranchConfig memory c) {
-        if (!(c.scr <= c.mcr && c.mcr < c.ccr) || c.minRate > c.maxRate || c.spShare > WAD || c.escrow == address(0)) {
+        if (
+            !(c.scr <= c.mcr && c.mcr < c.ccr) || c.minRate > c.maxRate || c.spShare > WAD || c.escrow == address(0)
+                || !(c.penSp <= c.penRedist && c.penRedist <= c.mcr - WAD) || c.liqBonus > WAD
+        ) {
             revert InvalidConfig();
         }
         stable = c.stable;
@@ -139,6 +155,10 @@ contract BranchManager is IBranchManager, IBorrowerGateway, ReentrancyGuardTrans
         capCeiling = c.capCeiling;
         gasDeposit = c.gasDeposit;
         spShare = c.spShare;
+        penSp = c.penSp;
+        penRedist = c.penRedist;
+        liqBonus = c.liqBonus;
+        liqBonusCap = c.liqBonusCap;
         createdAt = block.timestamp;
         _ledger.lastAggUpdate = uint64(block.timestamp);
     }
@@ -355,6 +375,99 @@ contract BranchManager is IBranchManager, IBorrowerGateway, ReentrancyGuardTrans
     }
 
     // =================================================================================================================
+    // Liquidation (ILiquidations, SPEC 6.2-6.4)
+    // =================================================================================================================
+
+    /// @notice Anyone may liquidate a Trove below MCR, with a Valid price, while the branch is live (L1). The waterfall
+    ///         (L2): the Stability Pool absorbs what it can above its residual at <= penSp, the rest is redistributed to
+    ///         the other Troves at <= penRedist, and with no Trove left to take it, it becomes bad debt and the branch
+    ///         shuts down. The liquidator receives liqBonus of the collateral (capped) and the Trove's gas deposit; what
+    ///         is left belongs to the owner (L3).
+    function liquidate(uint256 troveId) external nonReentrant returns (LiquidationValues memory v) {
+        _requireOpen(troveId);
+        _requireLive(); // after a shutdown Troves are settled, not liquidated
+        uint256 price = _requireValidPrice();
+        _stepA();
+        Trove storage t = _troves[troveId];
+        _touch(troveId, 0, 0, t.annualRate, 0);
+        uint256 debt = t.recordedDebt;
+        uint256 coll = t.coll;
+        if (debt == 0) revert TroveNotLiquidatable(); // a zero-debt Trove has infinite ICR
+        if (coll * price / debt >= mcr) revert TroveNotLiquidatable();
+        v = _waterfall(debt, coll, price);
+        address owner = nft.ownerOf(troveId);
+        _removeTrove(troveId, TroveStatus.ClosedByLiquidation);
+        _payGasDeposit(troveId, msg.sender);
+        _collOut(msg.sender, v.liquidatorBonus);
+        if (v.debtOffset > 0) {
+            _collOut(address(stabilityPool), v.collToSP);
+            stabilityPool.offset(v.debtOffset, v.collToSP);
+            stable.burn(address(stabilityPool), v.debtOffset); // the protocol's own account (SPEC 10.5)
+            _ledger.aggDebt -= v.debtOffset;
+        }
+        if (v.debtRemainder > 0) {
+            if (totalStakes > 0) {
+                _redistribute(v.debtRemainder, v.collRemainder);
+            } else {
+                _ledger.badDebt += v.debtRemainder;
+                _ledger.badDebtColl += v.collRemainder;
+                v.becameBadDebt = true;
+                _shutdown();
+            }
+        } else {
+            v.collSurplus += v.collRemainder;
+        }
+        surplus[owner] += v.collSurplus;
+        totalStakesSnapshot = totalStakes;
+        totalCollSnapshot = activeColl + defaultColl;
+        _sweepDustIfEmpty();
+        if (_ledger.shutdownAt == 0 && _tcr(price) < scr) {
+            _shutdown();
+        }
+        emit Liquidated(troveId, msg.sender, v);
+    }
+
+    /// The split of one liquidated Trove. Premiums are caps: an under-water Trove hands over everything it has.
+    function _waterfall(uint256 debt, uint256 coll, uint256 price) internal view returns (LiquidationValues memory v) {
+        uint256 bonus = coll * liqBonus / WAD;
+        v.liquidatorBonus = bonus < liqBonusCap ? bonus : liqBonusCap;
+        uint256 collAvail = coll - v.liquidatorBonus;
+        uint256 spTotal = stabilityPool.totalDeposits();
+        uint256 spAvail = spTotal > MIN_SP_RESIDUAL ? spTotal - MIN_SP_RESIDUAL : 0;
+        v.debtOffset = debt < spAvail ? debt : spAvail;
+        v.collToSP = _min(v.debtOffset * (WAD + penSp) / price, collAvail * v.debtOffset / debt);
+        v.debtRemainder = debt - v.debtOffset;
+        v.collRemainder = _min(v.debtRemainder * (WAD + penRedist) / price, collAvail - v.collToSP);
+        v.collSurplus = collAvail - v.collToSP - v.collRemainder;
+    }
+
+    /// Redistribution (SPEC L4): per-stake accumulators at L_PRECISION, with the division remainders carried forward.
+    function _redistribute(uint256 debt, uint256 coll) internal {
+        uint256 stakes = totalStakes;
+        uint256 nc = coll * L_PRECISION + lCollError;
+        uint256 nd = debt * L_PRECISION + lDebtError;
+        uint256 pc = nc / stakes;
+        uint256 pd = nd / stakes;
+        lCollError = nc - pc * stakes;
+        lDebtError = nd - pd * stakes;
+        lColl += pc;
+        lDebt += pd;
+        defaultColl += coll;
+    }
+
+    /// @notice The collateral a liquidation left over for the caller's Troves. Needs no price and no permission (L3).
+    function claimSurplus() external nonReentrant returns (uint256 amount) {
+        amount = surplus[msg.sender];
+        surplus[msg.sender] = 0;
+        _collOut(msg.sender, amount);
+        emit SurplusClaimed(msg.sender, amount);
+    }
+
+    function _min(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a < b ? a : b;
+    }
+
+    // =================================================================================================================
     // Views
     // =================================================================================================================
 
@@ -523,12 +636,12 @@ contract BranchManager is IBranchManager, IBorrowerGateway, ReentrancyGuardTrans
 
     function _pendDebt(uint256 troveId) internal view returns (uint256) {
         Trove storage t = _troves[troveId];
-        return t.stake * (lDebt - t.snapshotLDebt) / L_PRECISION;
+        return FixedPointMath.mulDivDown(t.stake, lDebt - t.snapshotLDebt, L_PRECISION); // floor, no 256-bit ceiling
     }
 
     function _pendColl(uint256 troveId) internal view returns (uint256) {
         Trove storage t = _troves[troveId];
-        return t.stake * (lColl - t.snapshotLColl) / L_PRECISION;
+        return FixedPointMath.mulDivDown(t.stake, lColl - t.snapshotLColl, L_PRECISION);
     }
 
     function _debtNow(uint256 troveId) internal view returns (uint256) {

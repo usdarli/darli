@@ -6,7 +6,8 @@ import {StdInvariant} from "forge-std/StdInvariant.sol";
 import {BranchFixture} from "./BranchFixture.sol";
 import {BranchManager} from "../src/core/BranchManager.sol";
 import {StableToken} from "../src/core/StableToken.sol";
-import {MockPriceFeed, MockStabilityPool} from "./mocks/BranchMocks.sol";
+import {MockPriceFeed} from "./mocks/BranchMocks.sol";
+import {StabilityPool} from "../src/core/StabilityPool.sol";
 import {TroveNFT} from "../src/core/TroveNFT.sol";
 import {Trove, TroveStatus, PriceStatus} from "../src/Types.sol";
 
@@ -16,13 +17,13 @@ contract BranchHandler is Test {
     BranchManager public immutable manager;
     StableToken public immutable stable;
     MockPriceFeed public immutable feed;
-    MockStabilityPool public immutable sp;
+    StabilityPool public immutable sp;
     TroveNFT public immutable nft;
     uint256 constant E = 1e18;
     uint256 constant MAX = type(uint256).max;
     uint256 public accepted;
 
-    constructor(BranchManager m, StableToken s, MockPriceFeed f, MockStabilityPool p, TroveNFT n) {
+    constructor(BranchManager m, StableToken s, MockPriceFeed f, StabilityPool p, TroveNFT n) {
         manager = m;
         stable = s;
         feed = f;
@@ -155,6 +156,27 @@ contract BranchHandler is Test {
         } catch {}
     }
 
+    function liquidate(uint256 t, uint256 who) external {
+        vm.prank(_user(who));
+        try manager.liquidate(_trove(t)) {
+            _count(true);
+        } catch {}
+    }
+
+    function spClaim(uint256 who) external {
+        vm.prank(_user(who));
+        try sp.claim() {
+            _count(true);
+        } catch {}
+    }
+
+    function claimSurplus(uint256 who) external {
+        vm.prank(_user(who));
+        try manager.claimSurplus() {
+            _count(true);
+        } catch {}
+    }
+
     function warp(uint256 dt) external {
         vm.warp(block.timestamp + bound(dt, 1, 40 days));
     }
@@ -163,12 +185,22 @@ contract BranchHandler is Test {
         feed.set(bound(p, 1_200 * E, 3_000 * E), feed.status());
     }
 
+    /// Guided: puts one Trove at an ICR between 95 % and 109 %, where liquidation, premiums and surplus all happen.
+    function crashTo(uint256 t, uint256 icrPct) external {
+        uint256 id = _trove(t);
+        uint256 coll = manager.troveColl(id);
+        uint256 debt = manager.troveDebt(id);
+        if (coll == 0 || debt == 0) return;
+        feed.set(bound(icrPct, 95, 109) * 1e16 * debt / coll, PriceStatus.Valid);
+    }
+
     function setStatus(uint256 s) external {
         feed.set(feed.price(), s % 5 == 0 ? PriceStatus.PriceInvalid : PriceStatus.Valid);
     }
 }
 
-/// SPEC I-1, I-2, I-4, I-17, I-21 and the queue rule R2, after any sequence of borrower operations. The model checks the
+/// SPEC I-1, I-2, I-4, I-5, I-17, I-19, I-21 and the queue rule R2, after any sequence of borrower operations,
+/// liquidations and Stability Pool operations. The model checks the
 /// same identities in `check_invariants`; here they are checked on the contracts.
 contract BranchManagerInvariantTest is StdInvariant, BranchFixture {
     BranchHandler handler;
@@ -179,7 +211,7 @@ contract BranchManagerInvariantTest is StdInvariant, BranchFixture {
         for (uint256 i = 0; i < 4; i++) {
             weth.mint(account(i), 10_000 * E);
         }
-        bytes4[] memory s = new bytes4[](16);
+        bytes4[] memory s = new bytes4[](21);
         s[0] = BranchHandler.open.selector;
         s[1] = BranchHandler.open.selector;
         s[2] = BranchHandler.borrow.selector;
@@ -196,6 +228,11 @@ contract BranchManagerInvariantTest is StdInvariant, BranchFixture {
         s[13] = BranchHandler.warp.selector;
         s[14] = BranchHandler.setPrice.selector;
         s[15] = BranchHandler.setStatus.selector;
+        s[16] = BranchHandler.liquidate.selector;
+        s[17] = BranchHandler.liquidate.selector;
+        s[18] = BranchHandler.spClaim.selector;
+        s[19] = BranchHandler.claimSurplus.selector;
+        s[20] = BranchHandler.crashTo.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: s}));
         targetContract(address(handler));
     }
@@ -209,6 +246,7 @@ contract BranchManagerInvariantTest is StdInvariant, BranchFixture {
         uint256 sumGas;
         uint256 open;
         uint256 active;
+        uint256 sumPendColl;
         for (uint256 id = 1; id < n; id++) {
             Trove memory t = manager.getTrove(id);
             sumGas += manager.gasLeft(id);
@@ -221,6 +259,7 @@ contract BranchManagerInvariantTest is StdInvariant, BranchFixture {
             if (t.status == TroveStatus.Active) active++;
             assertEq(list.contains(id), t.status == TroveStatus.Active, "R2: the queue holds exactly the Active Troves");
             sumDebt += manager.troveDebt(id);
+            sumPendColl += manager.troveColl(id) - t.coll;
             sumWeight += t.recordedDebt * t.annualRate;
             sumColl += t.coll;
             sumStake += t.stake;
@@ -230,14 +269,28 @@ contract BranchManagerInvariantTest is StdInvariant, BranchFixture {
         assertEq(stable.totalSupply(), aggDebt, "I-1 / T3: supply == aggregate debt");
         // I-2: aggregate (rounded up) never below the sum of Troves (rounded down) plus bad debt; epsilon >= 0
         assertGe(aggDebt + manager.pendingAggInterest(), sumDebt + badDebt, "I-2: epsilon went negative");
-        assertEq(manager.ledger().aggWeightedDebtSum, sumWeight, "B1: aggW is not the sum of recorded debt x rate");
+        if (manager.ledger().shutdownAt == 0) {
+            assertEq(manager.ledger().aggWeightedDebtSum, sumWeight, "B1: aggW is not the sum of recorded debt x rate");
+        } else {
+            assertEq(manager.ledger().aggWeightedDebtSum, 0, "B3: interest must stop at shutdown (aggW = 0)");
+        }
         assertEq(manager.activeColl(), sumColl, "B12: active collateral is not the sum of the Troves'");
         assertEq(manager.totalStakes(), sumStake, "total stakes is not the sum of the Troves'");
         assertEq(manager.gasPool(), sumGas, "I-21: gas pool is not the sum of the per-Trove deposits");
         assertEq(manager.nOpen(), open, "the open-Trove counter drifted");
         assertEq(list.size(), active, "R2: queue size");
+        // redistributed collateral waiting in the default account covers what the Troves have pending (floors)
+        assertGe(manager.defaultColl(), sumPendColl, "L4: the default account cannot pay the pending collateral");
         // I-4 / B12: every named account is in the vault, and nothing unnamed is in the ledger
-        assertEq(vault.accountedColl(), manager.activeColl() + manager.defaultColl() + manager.gasPool(), "I-4");
+        uint256 surpluses;
+        for (uint256 i = 0; i < 4; i++) {
+            surpluses += manager.surplus(account(i));
+        }
+        assertEq(
+            vault.accountedColl(),
+            manager.activeColl() + manager.defaultColl() + manager.gasPool() + surpluses + manager.ledger().badDebtColl,
+            "I-4 / B12: vault accounting"
+        );
         assertGe(weth.balanceOf(address(vault)), vault.accountedColl(), "I-4: vault holds less than it accounts");
         // I-17: the registry can pay every claim, and never credited more than was deposited
         uint256 claims;
@@ -246,5 +299,26 @@ contract BranchManagerInvariantTest is StdInvariant, BranchFixture {
         }
         assertGe(stable.balanceOf(address(registry)), claims, "I-17: registry cannot pay its claims");
         assertGe(registry.totalDeposited(), registry.totalCredited(), "I-17: credited more than deposited");
+        _poolIsSolvent();
+        // I-19: collateral in the bad-debt bucket always has claimants
+        if (manager.ledger().badDebtColl > 0) {
+            assertGt(manager.ledger().badDebt, 0, "I-19: ownerless bad-debt collateral");
+        }
+    }
+
+    /// I-5: the pool holds every deposit it still owes and every gain it has credited.
+    function _poolIsSolvent() internal view {
+        uint256 compounded;
+        uint256 coll;
+        uint256 yield;
+        for (uint256 i = 0; i < 4; i++) {
+            address u = account(i);
+            compounded += sp.compoundedDeposit(u);
+            coll += sp.pendingColl(u) + sp.claimableColl(u);
+            yield += sp.pendingYield(u) + sp.claimableYield(u);
+        }
+        assertGe(sp.totalDeposits(), compounded, "I-5: deposits below the sum of compounded deposits");
+        assertGe(stable.balanceOf(address(sp)), sp.totalDeposits() + yield, "I-5: pool cannot pay deposits and yield");
+        assertGe(weth.balanceOf(address(sp)), coll, "I-5: pool cannot pay its collateral gains");
     }
 }

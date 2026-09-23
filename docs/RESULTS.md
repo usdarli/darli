@@ -13,47 +13,52 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | --- | --- |
 | contracts/foundry.toml | `f7e31bb8013021b6` |
 | contracts/remappings.txt | `79f11452d3ebfaa9` |
-| contracts/script/borrower_trace.py | `ddbbd1c2fe7d75e5` |
+| contracts/script/branch_trace.py | `57a8338e8d55c4db` |
 | contracts/script/check_test_count.py | `fce577ae0f91f146` |
-| contracts/script/export_vectors.py | `37b9cf54c1269137` |
-| contracts/src/Types.sol | `b5db9e98a91ce726` |
-| contracts/src/core/BranchManager.sol | `43ca8bba979217fd` |
+| contracts/script/export_vectors.py | `aae5635bb057cf49` |
+| contracts/script/sp_trace.py | `0ba08268a534e3d9` |
+| contracts/src/Types.sol | `9f2462cb1c9d5775` |
+| contracts/src/core/BranchManager.sol | `46615091db55e2b8` |
 | contracts/src/core/CollateralVault.sol | `6f391a45db4f4c9f` |
 | contracts/src/core/FrontendRegistry.sol | `9bd179cf293b0058` |
 | contracts/src/core/InterestEscrow.sol | `01ec1eaffa0acde7` |
 | contracts/src/core/RateSortedList.sol | `9f71240f01bc507d` |
+| contracts/src/core/StabilityPool.sol | `6029b9716642bfd0` |
 | contracts/src/core/StableToken.sol | `8cf26fe81cb2b6f8` |
 | contracts/src/core/TroveNFT.sol | `dcc0a15f051eda3d` |
 | contracts/src/deploy/DarliDeployer.sol | `08d3369ccc31c66b` |
 | contracts/src/interfaces/IBorrowerGateway.sol | `b287f9326f196a1f` |
-| contracts/src/interfaces/IBranchManager.sol | `8c76b87701b022d7` |
+| contracts/src/interfaces/IBranchManager.sol | `a67cd0072133258f` |
 | contracts/src/interfaces/ICore.sol | `58d10553bc790a76` |
 | contracts/src/interfaces/IPriceFeed.sol | `f2034a6189063139` |
-| contracts/src/interfaces/IStabilityPool.sol | `9a19c2783f019916` |
+| contracts/src/interfaces/IStabilityPool.sol | `e31e002e2b1d94ea` |
 | contracts/src/interfaces/IStableToken.sol | `32c3ee6d5eebfec1` |
 | contracts/src/libraries/Constants.sol | `fdc74daec8011f0b` |
 | contracts/src/libraries/FixedPointMath.sol | `ceda93baa0ece807` |
 | contracts/src/oracle/ChainlinkAdapters.sol | `7dbadd9f5f79d2d7` |
 | contracts/src/oracle/SingleSourcePriceFeed.sol | `41aa13e9ad6b65cc` |
-| contracts/test/BranchFixture.sol | `852d6d3aa3322c8d` |
-| contracts/test/BranchManager.invariant.t.sol | `8c7aab803b382a0d` |
-| contracts/test/BranchManager.t.sol | `81470fbed4f91873` |
-| contracts/test/BranchManager.trace.t.sol | `043a140e34b9a75e` |
+| contracts/test/BranchFixture.sol | `78ebe2131b4dc3fc` |
+| contracts/test/BranchManager.invariant.t.sol | `d01b1198b1201f40` |
+| contracts/test/BranchManager.t.sol | `b4378804181cff6a` |
+| contracts/test/BranchManager.trace.t.sol | `8784a12bee2725d6` |
 | contracts/test/DarliDeployer.t.sol | `ee25158d667ef970` |
 | contracts/test/FixedPointMath.t.sol | `8727fe555bb91e53` |
+| contracts/test/Liquidation.t.sol | `98c49a26b1b94709` |
 | contracts/test/OracleFeed.t.sol | `50d9e9cabb388194` |
 | contracts/test/RateSortedList.invariant.t.sol | `8fa8e6a375e4ed7d` |
 | contracts/test/RateSortedList.t.sol | `85ae503e09a92cf0` |
+| contracts/test/StabilityPool.t.sol | `c7530b42b466d6c5` |
 | contracts/test/StableToken.t.sol | `049ab75f2a809d16` |
-| contracts/test/mocks/BranchMocks.sol | `7498e8639076f5ae` |
+| contracts/test/mocks/BranchMocks.sol | `dec634b17b1021d8` |
 | contracts/test/mocks/OracleMocks.sol | `1edf7f875d9e124d` |
-| contracts/test/vectors/borrower_trace.json | `b05393f6c227370f` |
+| contracts/test/vectors/branch_trace.json | `522d4ff0da988e1e` |
 | contracts/test/vectors/math.json | `ee94c997bb9c3d9e` |
 | contracts/test/vectors/sorted_list.json | `aee5b22cb952dcd8` |
-| docs/SPEC.md | `0851f1e4ad3d38f9` |
+| contracts/test/vectors/stability_pool.json | `10988275992dda22` |
+| docs/SPEC.md | `f642d0bfffcb48fc` |
 | model/beta_pilot_compare.py | `64251462b830a798` |
 | model/check_figures.py | `a020fc9d36346070` |
-| model/check_manifest.py | `e60131b33ee7731f` |
+| model/check_manifest.py | `4ebce9af942c1e46` |
 | model/econ_sim.py | `879485b31c7fc5a0` |
 | model/figures.py | `369609e969c9154a` |
 | model/fuzz.py | `4f1e47e68c2212d3` |
@@ -62,7 +67,7 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | model/mutants.py | `abdb8b031d4d53d4` |
 | model/pilot_sweep.py | `fedbe2706b9613eb` |
 | model/results/beta_pilot_compare.jsonl | `fa07685fba612226` |
-| model/results/figures.json | `a044b3620ab2e7ba` |
+| model/results/figures.json | `803c5d1b9e146387` |
 | model/results/pilot_seeds.jsonl | `93d76cc221a27b03` |
 | model/results/pilot_summary.jsonl | `3490a40155f0a8b5` |
 | model/spec_check.py | `35cc0cb81d8679d8` |
@@ -91,8 +96,9 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | figures | `python3 check_figures.py` | Python 3.12 | every figure quoted below matches the run that produced it |
 | differential vectors | `python3 contracts/script/export_vectors.py model` | Python 3.12 | <!-- fig:contracts.vectors_total -->1,292<!-- /fig --> vectors, identical to the shipped file; <!-- fig:contracts.vectors_stepB_beyond_256_bit_product -->64<!-- /fig --> of them exercise step B where `debt × rate` exceeds 256 bits |
 | redemption queue vectors | the same command | Python 3.12 | <!-- fig:contracts.list_vector_operations -->561<!-- /fig --> list operations (insertions, removals, rate changes) taken from a run of the model's branch, and <!-- fig:contracts.list_vector_queues_checked -->485<!-- /fig --> whole queues in the model's order, <!-- fig:contracts.list_vector_queues_with_ties -->449<!-- /fig --> of them holding tied rates, up to <!-- fig:contracts.list_vector_max_size -->80<!-- /fig --> Troves; `RateSortedList` reproduces every queue whether its hints are exact, empty, reversed, stale or arbitrary |
-| borrower trace | the same command | Python 3.12 | <!-- fig:contracts.borrower_trace_steps -->700<!-- /fig --> steps of the model's branch, <!-- fig:contracts.borrower_trace_accepted -->457<!-- /fig --> accepted and <!-- fig:contracts.borrower_trace_refused -->243<!-- /fig --> refused, over <!-- fig:contracts.borrower_trace_troves -->37<!-- /fig --> Troves, ending shut down; every Trove and the queue compared in full <!-- fig:contracts.borrower_trace_full_checks -->28<!-- /fig --> times; `BranchManager` accepts and refuses the same operations and matches every recorded number |
-| Solidity | `forge test` | forge 1.5.1-stable, solc 0.8.26 | <!-- fig:contracts.declared_tests -->63<!-- /fig --> passed, 0 failed; `check_test_count.py` confirms forge ran exactly the declared number |
+| branch trace | the same command | Python 3.12 | <!-- fig:contracts.branch_trace_steps -->700<!-- /fig --> steps of the model's branch, <!-- fig:contracts.branch_trace_accepted -->471<!-- /fig --> accepted and <!-- fig:contracts.branch_trace_refused -->229<!-- /fig --> refused, over <!-- fig:contracts.branch_trace_troves -->39<!-- /fig --> Troves, with <!-- fig:contracts.branch_trace_liquidations -->27<!-- /fig --> liquidations (<!-- fig:contracts.branch_trace_liquidations_offset -->13<!-- /fig --> against the Stability Pool, <!-- fig:contracts.branch_trace_liquidations_redistributed -->24<!-- /fig --> redistributed, some both), ending shut down; every Trove and the queue compared in full <!-- fig:contracts.branch_trace_full_checks -->28<!-- /fig --> times; `BranchManager` accepts and refuses the same operations and matches every recorded number |
+| Stability Pool vectors | the same command | Python 3.12 | <!-- fig:contracts.sp_trace_steps -->400<!-- /fig --> operations on the model's pool; <!-- fig:contracts.sp_trace_rescaling_offsets -->32<!-- /fig --> offsets rescaled P, <!-- fig:contracts.sp_trace_multi_rescale_offsets -->4<!-- /fig --> of them more than once, up to scale <!-- fig:contracts.sp_trace_max_scale -->36<!-- /fig -->; `StabilityPool` matches every value of the pool and of every depositor |
+| Solidity | `forge test` | forge 1.5.1-stable, solc 0.8.26 | <!-- fig:contracts.declared_tests -->73<!-- /fig --> passed, 0 failed; `check_test_count.py` confirms forge ran exactly the declared number |
 | pilot tables | `python3 pilot_sweep.py 0 6 20` | Python 3.12 | shipped in `results/`; hardest case rerun identical |
 
 All on the release commit, 2026-09-22, Linux x86-64. A hash match proves a file is the one recorded; this table records that the results were produced by running these files.

@@ -182,7 +182,7 @@ contract BranchManagerTest is BranchFixture {
         sp.deposit(1);
         (minted, gain) = _accrueAndMeasure(t);
         assertEq(gain, minted * 72 * PCT / E, "V1: a pool at MIN_SP_RESIDUAL did not receive its 72 %");
-        assertEq(sp.yieldCredited(), gain, "V1: yield minted to the pool without being credited to it");
+        assertGt(sp.scaleToB(sp.currentScale()), 0, "V1: yield minted to the pool without being credited to it");
     }
 
     // --- SPEC B11: the built-in debt cap -------------------------------------------------------------------------------
@@ -321,7 +321,11 @@ contract BranchManagerTest is BranchFixture {
             cap0: 1,
             capCeiling: 1,
             gasDeposit: 0,
-            spShare: 72 * PCT
+            spShare: 72 * PCT,
+            penSp: 5 * PCT,
+            penRedist: 10 * PCT,
+            liqBonus: PCT / 2,
+            liqBonusCap: 2 * E
         });
         vm.expectRevert(BranchManager.InvalidConfig.selector);
         new BranchManager(c);

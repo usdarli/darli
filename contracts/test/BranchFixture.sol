@@ -12,9 +12,10 @@ import {IStabilityPool} from "../src/interfaces/IStabilityPool.sol";
 import {IBranchManager} from "../src/interfaces/IBranchManager.sol";
 import {IFrontendRegistry, ICollateralVault, ITroveNFT, IRateSortedList} from "../src/interfaces/ICore.sol";
 import {IStableToken} from "../src/interfaces/IStableToken.sol";
-import {MockCollateral, MockPriceFeed, MockStabilityPool} from "./mocks/BranchMocks.sol";
+import {StabilityPool} from "../src/core/StabilityPool.sol";
+import {MockCollateral, MockPriceFeed} from "./mocks/BranchMocks.sol";
 
-/// Deploys one branch exactly as `contracts/script/borrower_trace.py` configures the model's, at the real addresses the
+/// Deploys one branch exactly as `contracts/script/branch_trace.py` configures the model's, at the real addresses the
 /// deployment predicts (`vm.computeCreateAddress`), not placeholders.
 abstract contract BranchFixture is Test {
     uint256 constant E = 1e18;
@@ -29,7 +30,7 @@ abstract contract BranchFixture is Test {
     CollateralVault vault;
     TroveNFT nft;
     RateSortedList list;
-    MockStabilityPool sp;
+    StabilityPool sp;
     BranchManager manager;
     address escrow = makeAddr("InterestEscrow");
 
@@ -48,7 +49,7 @@ abstract contract BranchFixture is Test {
         vault = new CollateralVault(weth, predicted);
         nft = new TroveNFT(predicted, "Darli Trove (WETH)", "DTROVE-WETH");
         list = new RateSortedList(predicted);
-        sp = new MockStabilityPool(stable, IBranchManager(predicted));
+        sp = new StabilityPool(stable, weth, IBranchManager(predicted));
         manager = new BranchManager(
             BranchConfig({
                 stable: IStableToken(address(stable)),
@@ -69,7 +70,11 @@ abstract contract BranchFixture is Test {
                 cap0: cap0,
                 capCeiling: capCeiling,
                 gasDeposit: gasDeposit,
-                spShare: 72 * PCT
+                spShare: 72 * PCT,
+                penSp: 5 * PCT,
+                penRedist: 10 * PCT,
+                liqBonus: PCT / 2,
+                liqBonusCap: 2 * E
             })
         );
         assertEq(address(manager), predicted, "the branch is not at the address its parts were built against");
