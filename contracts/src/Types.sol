@@ -15,7 +15,8 @@ enum TroveStatus {
     Active,
     Zombie,
     ClosedByOwner,
-    ClosedByLiquidation
+    ClosedByLiquidation,
+    ClosedBySettlement
 }
 
 struct Trove {
@@ -52,11 +53,8 @@ struct LiquidationValues {
 }
 
 error NotAuthorized();
-error NotImplemented();
 error ZeroAmount();
 error BranchShutDown();
-error BranchDeprecated();
-error PausedByGuardian();
 error PriceNotValid(PriceStatus status);
 error InsufficientGasForOracleCall();
 error ICRBelowMCR();
@@ -68,6 +66,9 @@ error UpfrontFeeTooHigh(uint256 fee, uint256 maxFee);
 error RateOutOfRange();
 error RateNotNew();
 error TroveNotOpen();
+error TroveNotActive();
+error RepayInFullWithClose();
+error UnknownFrontend(uint32 frontendId);
 error WithdrawalNotMatchedByRepayment();
 error ShortfallAboveDust();
 error InvalidRecipient();

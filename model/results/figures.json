@@ -1,6 +1,11 @@
 {
   "contracts": {
-    "declared_tests": "48",
+    "borrower_trace_accepted": "457",
+    "borrower_trace_full_checks": "28",
+    "borrower_trace_refused": "243",
+    "borrower_trace_steps": "700",
+    "borrower_trace_troves": "37",
+    "declared_tests": "63",
     "list_vector_max_size": "80",
     "list_vector_operations": "561",
     "list_vector_queues_checked": "485",

@@ -186,6 +186,17 @@ assert min(n_ins, n_rem, n_re) >= 50 and max_size >= 20 and ties >= 100, (n_ins,
 outl = Path(__file__).resolve().parent.parent / "test" / "vectors" / "sorted_list.json"
 outl.write_text(json.dumps({"ops": ops, "checks": checks}))
 
+# --- the borrower trace (SPEC 4, 8, 6.5 triggers): see borrower_trace.py ------------------------------------------------ #
+import borrower_trace  # noqa: E402
+
+trace, tstats = borrower_trace.build(random.Random(20260924))
+never_ok = [k for k, n in tstats["ok_by_kind"].items() if n == 0]
+never_refused = [k for k in ("open", "borrow", "repay", "withdraw", "adjust", "rate", "close", "sp_dep", "give")
+                 if tstats["bad_by_kind"][k] == 0]
+assert not never_ok and not never_refused, f"trace does not exercise: accepted {never_ok}, refused {never_refused}"
+outt = Path(__file__).resolve().parent.parent / "test" / "vectors" / "borrower_trace.json"
+outt.write_text(json.dumps(trace))
+
 # Figures of record for contracts/ (model/figures.py). This is the one Python step that speaks for the Solidity side, and
 # it runs without forge, so the evidence job can record these next to every other figure. `declared_tests` is a static
 # count of `function test...` and `function invariant...` in contracts/test (forge runs and counts both); `make contracts`
@@ -204,8 +215,15 @@ fig("list_vector_operations", n_ins + n_rem + n_re, ",")
 fig("list_vector_queues_checked", len(checks["len"]), ",")
 fig("list_vector_queues_with_ties", ties, ",")
 fig("list_vector_max_size", max_size)
+fig("borrower_trace_steps", tstats["steps"])
+fig("borrower_trace_accepted", tstats["ok"])
+fig("borrower_trace_refused", tstats["refused"])
+fig("borrower_trace_troves", tstats["troves"])
+fig("borrower_trace_full_checks", tstats["full_checks"])
 dump("contracts")
 print(f"wrote {out} ({len(dp['out'])} decPow, {len(ia['out'])} stepA, {len(ib['out'])} stepB vectors, "
       f"{overflowing} of them beyond where debt * rate fits in 256 bits)")
+print(f"wrote {outt} ({tstats['steps']} steps: {tstats['ok']} accepted, {tstats['refused']} refused; "
+      f"{tstats['troves']} Troves; {tstats['full_checks']} full checks; ends shut down)")
 print(f"wrote {outl} ({n_ins} inserts, {n_rem} removals, {n_re} reinsertions; {len(checks['len'])} queues checked, "
       f"{ties} with tied rates, up to {max_size} Troves)")
