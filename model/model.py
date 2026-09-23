@@ -769,6 +769,12 @@ class Branch:
             self.stable.mint(t.owner, d_debt)
             self._mint_interest_split(fee)
             require(t.debt >= self.min_debt, "debt < MIN_DEBT")
+            if t.status == ZOMBIE:
+                # SPEC B4: back at the minimum, the Trove is Active again and rejoins the redemption queue. Without this,
+                # a Trove redeemed to zero (an untracked Zombie) could borrow back here and never be redeemed again
+                t.status = ACTIVE
+                if self.last_zombie == t.id:
+                    self.last_zombie = 0
         elif before >= self.min_debt:
             require(t.debt >= self.min_debt, "repay would leave dust debt")
         if d_coll < 0:
@@ -1496,6 +1502,7 @@ class System:
 
     def redeem(self, redeemer, amount, max_iter=20, max_fee_rate=WAD):
         require(amount > 0 and self.stable.supply > 0, "nothing to redeem")
+        require(self.stable.bal[redeemer] >= amount, "redemption request above the redeemer's balance")  # SPEC 10.5
         live = []
         for b in self.branches.values():
             if b.shutdown_at:

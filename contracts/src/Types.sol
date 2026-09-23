@@ -52,6 +52,15 @@ struct LiquidationValues {
     bool becameBadDebt;
 }
 
+/// What one branch reports to the CollateralRegistry before a redemption (SPEC R1, R3, R4).
+struct RedemptionState {
+    bool redeemable; // live, both prices Valid, TCR >= SCR
+    uint256 price; // decides redeemability: ICR >= 100 %
+    uint256 redemptionPrice; // converts debt to collateral
+    uint256 unbacked; // aggDebt not covered by the Stability Pool above its residual
+    uint256 aggDebt;
+}
+
 error NotAuthorized();
 error ZeroAmount();
 error BranchShutDown();

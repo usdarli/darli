@@ -4,8 +4,8 @@ pragma solidity ^0.8.26;
 import {BranchFixture} from "./BranchFixture.sol";
 import {Trove, BranchLedger, PriceStatus} from "../src/Types.sol";
 
-/// SPEC §4, §6 and §8 against the reference model: every operation of a model-driven trace -- borrowing, liquidation,
-/// redistribution, the Stability Pool, the shutdown triggers -- is replayed, and every acceptance, every refusal and
+/// SPEC §4, §5, §6 and §8 against the reference model: every operation of a model-driven trace -- borrowing, redemption,
+/// liquidation, redistribution, the Stability Pool, the shutdown triggers -- is replayed, and every acceptance, every refusal and
 /// every recorded number must match the model's.
 contract BranchManagerTraceTest is BranchFixture {
     struct Ops {
@@ -115,6 +115,9 @@ contract BranchManagerTraceTest is BranchFixture {
         if (k == 19) return _try(address(manager), abi.encodeCall(manager.liquidate, (tid)));
         if (k == 20) return _try(address(sp), abi.encodeCall(sp.claim, ()));
         if (k == 21) return _try(address(manager), abi.encodeCall(manager.claimSurplus, ()));
+        if (k == 22) {
+            return _try(address(collRegistry), abi.encodeCall(collRegistry.redeem, (o.a[i], o.b[i], o.c[i])));
+        }
         revert("unknown operation kind");
     }
 
@@ -124,7 +127,7 @@ contract BranchManagerTraceTest is BranchFixture {
 
     function _ledgerNow() internal view returns (uint256[] memory v) {
         BranchLedger memory l = manager.ledger();
-        v = new uint256[](37 + 9 * N_ACCOUNTS);
+        v = new uint256[](40 + 9 * N_ACCOUNTS);
         v[0] = l.aggDebt;
         v[1] = l.aggWeightedDebtSum;
         v[2] = l.lastAggUpdate;
@@ -170,11 +173,14 @@ contract BranchManagerTraceTest is BranchFixture {
         v[34] = sp.scaleToS(scale);
         v[35] = sp.scaleToB(scale);
         v[36] = weth.balanceOf(address(sp));
+        v[37] = collRegistry.baseRate();
+        v[38] = collRegistry.lastFeeOperationTime();
+        v[39] = manager.lastZombieTroveId();
     }
 
     function _accountNow(uint256[] memory v, uint256 j) internal view {
         address a = account(j);
-        uint256 o = 37 + 9 * j;
+        uint256 o = 40 + 9 * j;
         v[o] = stable.balanceOf(a);
         v[o + 1] = weth.balanceOf(a);
         v[o + 2] = registry.claimable(a);

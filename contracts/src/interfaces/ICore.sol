@@ -1,12 +1,21 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
+/// SPEC §5: one entry point for every branch of a system. No owner, no setter: the branches, β and the initial base
+/// rate are fixed at construction.
 interface ICollateralRegistry {
-    function redeem(uint256 amount, uint256 maxIterationsPerBranch, uint256 maxFeeRate, uint256[] calldata minCollOut)
+    /// @notice burns up to `amount` of the caller's USDarli, routed across the redeemable branches (R3), for their
+    ///         collateral at the fee rate fixed before redeeming (R5). Reverts if that rate is above `maxFeeRate`, if no
+    ///         branch is redeemable, or if `amount` exceeds the caller's balance (SPEC 10.5).
+    function redeem(uint256 amount, uint256 maxIterationsPerBranch, uint256 maxFeeRate)
         external
         returns (uint256 redeemed);
-    function getRedemptionFeeRate(uint256 amount) external view returns (uint256);
+    /// @notice the fee rate a redemption of `amount` would pay now.
+    function redemptionFeeRate(uint256 amount) external view returns (uint256);
+    /// @notice the stored base rate, before decay.
     function baseRate() external view returns (uint256);
+    function lastFeeOperationTime() external view returns (uint256);
+    function branchCount() external view returns (uint256);
 }
 
 /// Custody of one branch's collateral. Only its BranchManager moves it, and every movement is accounted.

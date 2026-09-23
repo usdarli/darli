@@ -18,6 +18,7 @@ contract MockPriceFeed is IPriceFeed {
     PriceStatus public status;
     uint256 public lastGoodPrice;
     bool public broken; // every read reverts: shows which operations never read the price at all
+    uint256 public redemptionPrice; // 0: the redemption price is the price (plain collateral)
 
     constructor(uint256 price_) {
         price = price_;
@@ -27,6 +28,11 @@ contract MockPriceFeed is IPriceFeed {
     function set(uint256 price_, PriceStatus status_) external {
         price = price_;
         status = status_;
+    }
+
+    /// A conservative redemption price below the market price (SPEC R4); 0 restores plain collateral.
+    function setRedemptionPrice(uint256 redemptionPrice_) external {
+        redemptionPrice = redemptionPrice_;
     }
 
     function setBroken(bool broken_) external {
@@ -43,6 +49,7 @@ contract MockPriceFeed is IPriceFeed {
     }
 
     function fetchRedemptionPrice() external returns (uint256, PriceStatus) {
-        return fetchPrice();
+        (uint256 p, PriceStatus s) = fetchPrice();
+        return (redemptionPrice == 0 || s != PriceStatus.Valid ? p : redemptionPrice, s);
     }
 }

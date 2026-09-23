@@ -444,11 +444,19 @@ def scenario_13_extra_checks():
         fund(weth, f"w{i}", 1000 * E)
         b.open_trove(f"w{i}", 1000 * E, 100_000 * E, (5 + i) * PCT)
     supply0 = s.stable.supply
-    s.stable.transfer("w1", "w0", 5_000 * E)                   # first trove's debt includes its upfront fee
+    for i in range(1, 5):                                      # the redeemer holds everything it asks for (SPEC 10.5)
+        s.stable.transfer(f"w{i}", "w0", s.stable.bal[f"w{i}"])
     red, _ = s.redeem("w0", 450_000 * E, max_iter=1)          # asks for 90% of supply, one trove only
     assert red < 110_000 * E, "max_iter=1 must cap the redemption at one trove"
     assert s.base_rate <= red * WAD // supply0 + 1, "stored baseRate must follow the amount actually redeemed"
     check_invariants(s)
+    # (c) SPEC 10.5: a request above the redeemer's balance is refused as a whole, even when the one Trove that
+    # max_iter allows holds less debt than the balance, so the burn alone would succeed
+    base, bal = s.base_rate, s.stable.bal["w0"]
+    assert b.debt_now(b.redemption_order()[0]) < bal
+    expect_revert(s.redeem, "w0", bal + 1, max_iter=1)
+    assert (s.base_rate, s.stable.bal["w0"]) == (base, bal), "a refused redemption must leave no trace"
+    s.redeem("w0", bal, max_iter=1)                            # exactly the balance is allowed
     return (f"one offset can move the scale by {jump}; deposit stranded after two scale changes = "
             f"{stranded} wei; baseRate after partial redeem = {s.base_rate / 1e16:.2f}%")
 
@@ -1485,6 +1493,34 @@ def scenario_32_untagged_share_returns_to_the_borrower():
         fe.claim(who)
     check_invariants(s)
     return f"untagged owner credited {exp_cli / E:.4f}; tagged: owner {exp_owner_t / E:.4f}, frontend {exp_fe / E:.4f}"
+
+
+def scenario_33_zombie_borrowing_back_rejoins_the_queue():
+    """SPEC B4 / R2: a Trove redeemed to exactly zero is a Zombie that no pointer tracks. If it borrows back above the
+    minimum -- through `adjust_trove` as well as `borrow` -- it must be Active again and redeemed before a Trove paying a
+    higher rate. Expectation from the rule: its rate (1 %) is lower than the other Trove's (5 %), so a redemption smaller
+    than its debt must come entirely out of it."""
+    out = []
+    for path in ("adjust_trove", "borrow"):
+        clock, s, b, weth, feed = setup()
+        for who in ("z", "o"):
+            fund(weth, who, 100 * E)
+        tz = b.open_trove("z", 20 * E, 10_000 * E, 1 * PCT)
+        to = b.open_trove("o", 80 * E, 30_000 * E, 5 * PCT)
+        s.redeem("o", b.debt_now(b.troves[tz]))                 # z redeemed to exactly zero
+        assert b.troves[tz].status == ZOMBIE and b.last_zombie == 0, "a Trove redeemed to zero is an untracked Zombie"
+        if path == "adjust_trove":
+            b.adjust_trove(tz, 0, 15_000 * E)
+        else:
+            b.borrow(tz, 15_000 * E)
+        assert b.troves[tz].status == ACTIVE, f"B4: borrowing back through {path} must reactivate the Zombie"
+        z0, o0 = b.debt_now(b.troves[tz]), b.debt_now(b.troves[to])
+        s.redeem("o", 2_000 * E)
+        assert b.debt_now(b.troves[tz]) == z0 - 2_000 * E and b.debt_now(b.troves[to]) == o0, \
+            f"R2: after {path} the lower-rate Trove must be redeemed first"
+        check_invariants(s, f"33 {path}")
+        out.append(path)
+    return "re-borrowed Zombie back in the queue via " + " and ".join(out)
 
 
 SCENARIOS = [v for k, v in sorted(globals().items()) if k.startswith("scenario_")]

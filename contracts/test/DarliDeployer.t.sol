@@ -279,6 +279,7 @@ contract DarliDeployerTest is Test {
                     stabilityPool: IStabilityPool(one),
                     frontends: IFrontendRegistry(one),
                     escrow: one,
+                    collateralRegistry: one,
                     mcr: 110e16,
                     ccr: 150e16,
                     scr: 110e16,

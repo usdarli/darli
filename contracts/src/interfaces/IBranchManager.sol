@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Trove, BranchLedger, LiquidationValues, PriceStatus} from "../Types.sol";
+import {Trove, BranchLedger, LiquidationValues, PriceStatus, RedemptionState} from "../Types.sol";
 import {IStableToken} from "./IStableToken.sol";
 
 /// @notice One branch: its two debt ledgers, its Troves and its shutdown triggers (SPEC §4, §6.5). The borrower entry
@@ -41,8 +41,11 @@ interface ILiquidations {
     function claimSurplus() external returns (uint256);
 }
 
-/// @notice SPEC §5, the part inside one branch. Implemented with the CollateralRegistry.
+/// @notice SPEC §5, the part inside one branch. Routed by the CollateralRegistry.
 interface IBranchRedemption {
+    /// @notice the prices, the debt and the part of it the Stability Pool does not cover; `redeemable` is false after a
+    ///         shutdown, without a Valid price or below SCR. Reads the feed and records nothing.
+    function redemptionState() external returns (RedemptionState memory);
     /// @notice only the CollateralRegistry.
     function redeemFromBranch(
         address redeemer,
@@ -52,7 +55,7 @@ interface IBranchRedemption {
         uint256 feeRate,
         uint256 maxIterations
     ) external returns (uint256 redeemed, uint256 collOut);
-    function unbackedSupply() external view returns (uint256);
+    function collateralRegistry() external view returns (address);
 }
 
 /// @notice SPEC §9: staged settlement after a shutdown; all permissionless.

@@ -108,6 +108,10 @@ MUTANTS = {
         "key=lambda t: (t.rate, t.id))", "key=lambda t: (t.rate, -t.id))"),
     "M44 the share of an untagged Trove goes to an ownerless account instead of its owner": (
         "            self.claimable[owner] += reward\n            return", "            self.claimable[\"IncentiveController\"] += reward\n            return"),
+    "M45 adjust_trove leaves a Zombie that borrowed back above the minimum out of the redemption queue": (
+        "            if t.status == ZOMBIE:\n                # SPEC B4: back at the minimum", "            if False:\n                # SPEC B4: back at the minimum"),
+    "M46 a redemption request above the redeemer's balance is accepted and truncated instead of refused": (
+        "        require(self.stable.bal[redeemer] >= amount, \"redemption", "        require(True or self.stable.bal[redeemer] >= amount, \"redemption"),
 }
 
 

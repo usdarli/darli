@@ -13,6 +13,8 @@ import {IBranchManager} from "../src/interfaces/IBranchManager.sol";
 import {IFrontendRegistry, ICollateralVault, ITroveNFT, IRateSortedList} from "../src/interfaces/ICore.sol";
 import {IStableToken} from "../src/interfaces/IStableToken.sol";
 import {StabilityPool} from "../src/core/StabilityPool.sol";
+import {CollateralRegistry} from "../src/core/CollateralRegistry.sol";
+import {IBranchRedemption} from "../src/interfaces/IBranchManager.sol";
 import {MockCollateral, MockPriceFeed} from "./mocks/BranchMocks.sol";
 
 /// Deploys one branch exactly as `contracts/script/branch_trace.py` configures the model's, at the real addresses the
@@ -32,11 +34,17 @@ abstract contract BranchFixture is Test {
     RateSortedList list;
     StabilityPool sp;
     BranchManager manager;
+    CollateralRegistry collRegistry;
     address escrow = makeAddr("InterestEscrow");
 
     function account(uint256 i) internal pure returns (address) {
         return address(uint160(0x1000 + i));
     }
+
+    // the redemption fee parameters of the trace (`branch_trace.py`): β is open (SPEC §0), 4 as in the pilot simulations;
+    // the pilot's initial base rate (R6)
+    uint256 constant BETA_WAD = 4 * E;
+    uint256 constant INITIAL_BASE_RATE = 10 * PCT;
 
     function deployBranch(uint256 minDebt, uint256 cap0, uint256 capCeiling, uint256 gasDeposit) internal {
         vm.warp(START);
@@ -45,7 +53,10 @@ abstract contract BranchFixture is Test {
         feed = new MockPriceFeed(2000 * E);
         weth = new MockCollateral();
         uint256 n = vm.getNonce(address(this));
-        address predicted = vm.computeCreateAddress(address(this), n + 4);
+        address predicted = vm.computeCreateAddress(address(this), n + 5);
+        IBranchRedemption[] memory branches = new IBranchRedemption[](1);
+        branches[0] = IBranchRedemption(predicted);
+        collRegistry = new CollateralRegistry(IStableToken(address(stable)), branches, BETA_WAD, INITIAL_BASE_RATE);
         vault = new CollateralVault(weth, predicted);
         nft = new TroveNFT(predicted, "Darli Trove (WETH)", "DTROVE-WETH");
         list = new RateSortedList(predicted);
@@ -61,6 +72,7 @@ abstract contract BranchFixture is Test {
                 stabilityPool: IStabilityPool(address(sp)),
                 frontends: IFrontendRegistry(address(registry)),
                 escrow: escrow,
+                collateralRegistry: address(collRegistry),
                 mcr: 110 * PCT,
                 ccr: 150 * PCT,
                 scr: 110 * PCT,

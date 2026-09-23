@@ -5,7 +5,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
-import {IBranchManager, ILiquidations} from "../interfaces/IBranchManager.sol";
+import {IBranchManager, ILiquidations, IBranchRedemption} from "../interfaces/IBranchManager.sol";
 import {IBorrowerGateway} from "../interfaces/IBorrowerGateway.sol";
 import {IStableToken} from "../interfaces/IStableToken.sol";
 import {IPriceFeed} from "../interfaces/IPriceFeed.sol";
@@ -35,6 +35,7 @@ struct BranchConfig {
     IStabilityPool stabilityPool;
     IFrontendRegistry frontends;
     address escrow;
+    address collateralRegistry; // the system's redemption router: the only caller of redeemFromBranch
     uint256 mcr;
     uint256 ccr;
     uint256 scr;
@@ -60,8 +61,8 @@ struct BranchConfig {
 ///         burn), the price feed (risk-increasing operations and shutdown triggers only), the Stability Pool (yield it is
 ///         owed), the frontend registry (the interfaces' share), the Trove NFT (ownership) and the redemption list. All
 ///         are contracts of this deployment except the collateral token and the feed; none of them calls into user code.
-///         Liquidation, redemption and settlement (ILiquidations, IBranchRedemption, ISettlement) are later stages.
-contract BranchManager is IBranchManager, IBorrowerGateway, ILiquidations, ReentrancyGuardTransient {
+///         Settlement after a shutdown (ISettlement) is a later stage.
+contract BranchManager is IBranchManager, IBorrowerGateway, ILiquidations, IBranchRedemption, ReentrancyGuardTransient {
     using SafeERC20 for IERC20;
 
     // --- wiring (immutable) -------------------------------------------------------------------------------------------
@@ -74,6 +75,7 @@ contract BranchManager is IBranchManager, IBorrowerGateway, ILiquidations, Reent
     IStabilityPool public immutable stabilityPool;
     IFrontendRegistry public immutable frontends;
     address public immutable escrow;
+    address public immutable collateralRegistry;
 
     // --- parameters (immutable; SPEC §2) ------------------------------------------------------------------------------
     uint256 public immutable mcr;
@@ -126,13 +128,15 @@ contract BranchManager is IBranchManager, IBorrowerGateway, ILiquidations, Reent
     event Shutdown(uint256 at, uint256 settlePrice);
     event Liquidated(uint256 indexed troveId, address indexed liquidator, LiquidationValues values);
     event SurplusClaimed(address indexed owner, uint256 amount);
+    event Redeemed(address indexed redeemer, uint256 redeemed, uint256 collOut, uint256 feeRate);
 
     error InvalidConfig();
 
     constructor(BranchConfig memory c) {
         if (
             !(c.scr <= c.mcr && c.mcr < c.ccr) || c.minRate > c.maxRate || c.spShare > WAD || c.escrow == address(0)
-                || !(c.penSp <= c.penRedist && c.penRedist <= c.mcr - WAD) || c.liqBonus > WAD
+                || c.collateralRegistry == address(0) || !(c.penSp <= c.penRedist && c.penRedist <= c.mcr - WAD)
+                || c.liqBonus > WAD
         ) {
             revert InvalidConfig();
         }
@@ -145,6 +149,7 @@ contract BranchManager is IBranchManager, IBorrowerGateway, ILiquidations, Reent
         stabilityPool = c.stabilityPool;
         frontends = c.frontends;
         escrow = c.escrow;
+        collateralRegistry = c.collateralRegistry;
         mcr = c.mcr;
         ccr = c.ccr;
         scr = c.scr;
@@ -249,6 +254,9 @@ contract BranchManager is IBranchManager, IBorrowerGateway, ILiquidations, Reent
             stable.mint(msg.sender, uint256(debtChange));
             _mintInterestSplit(fee);
             if (t.recordedDebt < minDebt) revert DebtBelowMinimum();
+            if (t.status == TroveStatus.Zombie) {
+                _reactivate(troveId); // back at the minimum: Active again and in the queue, as after `borrow` (SPEC B4)
+            }
         } else if (before >= minDebt && t.recordedDebt < minDebt) {
             revert RepayWouldLeaveDust();
         }
@@ -461,6 +469,75 @@ contract BranchManager is IBranchManager, IBorrowerGateway, ILiquidations, Reent
         surplus[msg.sender] = 0;
         _collOut(msg.sender, amount);
         emit SurplusClaimed(msg.sender, amount);
+    }
+
+    // =================================================================================================================
+    // Redemption inside the branch (IBranchRedemption, SPEC 5)
+    // =================================================================================================================
+
+    /// @notice What the CollateralRegistry needs to route a redemption (R1, R3, R4). Reads the feed, records nothing:
+    ///         a price that is not Valid only makes the branch unredeemable for this call; it never shuts it down.
+    function redemptionState() external nonReentrant returns (RedemptionState memory s) {
+        s.aggDebt = _ledger.aggDebt;
+        uint256 spTotal = stabilityPool.totalDeposits();
+        uint256 covered = spTotal > MIN_SP_RESIDUAL ? spTotal - MIN_SP_RESIDUAL : 0;
+        s.unbacked = s.aggDebt > covered ? s.aggDebt - covered : 0;
+        if (_ledger.shutdownAt != 0) return s; // after a shutdown: settlement, not redemption
+        PriceStatus status;
+        (s.price, status) = feed.fetchPrice();
+        if (status != PriceStatus.Valid || _tcr(s.price) < scr) return s;
+        (s.redemptionPrice, status) = feed.fetchRedemptionPrice();
+        s.redeemable = status == PriceStatus.Valid && s.redemptionPrice != 0;
+    }
+
+    /// @notice Only the CollateralRegistry, with the prices it just read from `redemptionState` and one fee rate for the
+    ///         whole redemption. Walks the tracked Zombie first, then the queue from its lowest (rate, id) (R2); skips a
+    ///         Trove below 100 % ICR at `price` but counts it as an iteration; converts debt at `redemptionPrice` (R4);
+    ///         leaves the fee in the Trove as collateral (R7). A Trove left under the minimum becomes a Zombie and leaves
+    ///         the queue; with debt left, it is the one redeemed first next time. Burns only from the redeemer.
+    function redeemFromBranch(
+        address redeemer,
+        uint256 amount,
+        uint256 price,
+        uint256 redemptionPrice,
+        uint256 feeRate,
+        uint256 maxIterations
+    ) external nonReentrant returns (uint256 redeemed, uint256 collOut) {
+        if (msg.sender != collateralRegistry) revert NotAuthorized();
+        _requireLive();
+        _stepA();
+        uint256 remaining = amount;
+        uint256 id = _lastZombie;
+        bool zombieFirst = id != 0;
+        if (!zombieFirst) id = list.last();
+        for (uint256 it = 0; id != 0 && remaining != 0 && it < maxIterations; it++) {
+            // the next Trove, read before this one can leave the queue; the tracked Zombie is not in it
+            uint256 nextId = zombieFirst ? list.last() : list.prev(id);
+            zombieFirst = false;
+            if (_icr(id, price) >= WAD) {
+                uint256 r = _min(remaining, _debtNow(id));
+                uint256 out = r * WAD / redemptionPrice;
+                out -= out * feeRate / WAD; // the fee stays in the Trove (R7)
+                Trove storage t = _troves[id];
+                _touch(id, -SafeCast.toInt256(r), 0, t.annualRate, -SafeCast.toInt256(out));
+                remaining -= r;
+                collOut += out;
+                if (t.recordedDebt < minDebt) {
+                    if (t.status == TroveStatus.Active) {
+                        t.status = TroveStatus.Zombie; // includes a debt of zero
+                        list.remove(id);
+                        if (t.recordedDebt != 0) _lastZombie = id;
+                    } else if (t.recordedDebt == 0 && _lastZombie == id) {
+                        _lastZombie = 0;
+                    }
+                }
+            }
+            id = nextId;
+        }
+        redeemed = amount - remaining;
+        stable.burn(redeemer, redeemed); // the account that initiated the redemption (SPEC 10.5)
+        _collOut(redeemer, collOut);
+        emit Redeemed(redeemer, redeemed, collOut, feeRate);
     }
 
     function _min(uint256 a, uint256 b) internal pure returns (uint256) {

@@ -9,6 +9,8 @@ import {StableToken} from "../src/core/StableToken.sol";
 import {MockPriceFeed} from "./mocks/BranchMocks.sol";
 import {StabilityPool} from "../src/core/StabilityPool.sol";
 import {TroveNFT} from "../src/core/TroveNFT.sol";
+import {CollateralRegistry} from "../src/core/CollateralRegistry.sol";
+import {RateSortedList} from "../src/core/RateSortedList.sol";
 import {Trove, TroveStatus, PriceStatus} from "../src/Types.sol";
 
 /// Random borrower operations by four users, with time and price moving. Every call is wrapped, so a refusal is an
@@ -19,16 +21,28 @@ contract BranchHandler is Test {
     MockPriceFeed public immutable feed;
     StabilityPool public immutable sp;
     TroveNFT public immutable nft;
+    CollateralRegistry public immutable router;
+    RateSortedList public immutable queue;
     uint256 constant E = 1e18;
     uint256 constant MAX = type(uint256).max;
     uint256 public accepted;
 
-    constructor(BranchManager m, StableToken s, MockPriceFeed f, StabilityPool p, TroveNFT n) {
+    constructor(
+        BranchManager m,
+        StableToken s,
+        MockPriceFeed f,
+        StabilityPool p,
+        TroveNFT n,
+        CollateralRegistry r,
+        RateSortedList q
+    ) {
         manager = m;
         stable = s;
         feed = f;
         sp = p;
         nft = n;
+        router = r;
+        queue = q;
     }
 
     function _user(uint256 seed) internal pure returns (address) {
@@ -177,6 +191,34 @@ contract BranchHandler is Test {
         } catch {}
     }
 
+    function redeem(uint256 who, uint256 amount, uint256 iterations) external {
+        address u = _user(who);
+        amount = bound(amount, 1, stable.balanceOf(u) + 1);
+        vm.prank(u);
+        try router.redeem(amount, bound(iterations, 1, 10), 1e18) {
+            _count(true);
+        } catch {}
+    }
+
+    /// Guided: the head of the queue redeemed to exactly zero (an untracked Zombie) or to just under the minimum (the
+    /// tracked one), by whoever holds the most USDarli.
+    function redeemHead(uint256 mode) external {
+        uint256 head = manager.lastZombieTroveId();
+        if (head == 0) head = queue.last();
+        if (head == 0) return;
+        address u = _user(0);
+        for (uint256 i = 1; i < 4; i++) {
+            if (stable.balanceOf(_user(i)) > stable.balanceOf(u)) u = _user(i);
+        }
+        uint256 debt = manager.troveDebt(head);
+        uint256 amount = mode % 2 == 0 ? debt : (debt > 1_000 * E ? debt - 1_000 * E : debt);
+        if (amount == 0 || amount > stable.balanceOf(u)) return;
+        vm.prank(u);
+        try router.redeem(amount, 1, 1e18) {
+            _count(true);
+        } catch {}
+    }
+
     function warp(uint256 dt) external {
         vm.warp(block.timestamp + bound(dt, 1, 40 days));
     }
@@ -200,18 +242,18 @@ contract BranchHandler is Test {
 }
 
 /// SPEC I-1, I-2, I-4, I-5, I-17, I-19, I-21 and the queue rule R2, after any sequence of borrower operations,
-/// liquidations and Stability Pool operations. The model checks the
+/// redemptions, liquidations and Stability Pool operations. The model checks the
 /// same identities in `check_invariants`; here they are checked on the contracts.
 contract BranchManagerInvariantTest is StdInvariant, BranchFixture {
     BranchHandler handler;
 
     function setUp() public {
         deployBranch(2000 * E, 5_000_000 * E, 5_000_000 * E, E / 1000);
-        handler = new BranchHandler(manager, stable, feed, sp, nft);
+        handler = new BranchHandler(manager, stable, feed, sp, nft, collRegistry, list);
         for (uint256 i = 0; i < 4; i++) {
             weth.mint(account(i), 10_000 * E);
         }
-        bytes4[] memory s = new bytes4[](21);
+        bytes4[] memory s = new bytes4[](24);
         s[0] = BranchHandler.open.selector;
         s[1] = BranchHandler.open.selector;
         s[2] = BranchHandler.borrow.selector;
@@ -233,6 +275,9 @@ contract BranchManagerInvariantTest is StdInvariant, BranchFixture {
         s[18] = BranchHandler.spClaim.selector;
         s[19] = BranchHandler.claimSurplus.selector;
         s[20] = BranchHandler.crashTo.selector;
+        s[21] = BranchHandler.redeem.selector;
+        s[22] = BranchHandler.redeem.selector;
+        s[23] = BranchHandler.redeemHead.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: s}));
         targetContract(address(handler));
     }
@@ -279,6 +324,12 @@ contract BranchManagerInvariantTest is StdInvariant, BranchFixture {
         assertEq(manager.gasPool(), sumGas, "I-21: gas pool is not the sum of the per-Trove deposits");
         assertEq(manager.nOpen(), open, "the open-Trove counter drifted");
         assertEq(list.size(), active, "R2: queue size");
+        // R2: the tracked Zombie is a Zombie with debt left; one redeemed to zero is not tracked
+        uint256 z = manager.lastZombieTroveId();
+        if (z != 0) {
+            assertEq(uint8(manager.getTrove(z).status), uint8(TroveStatus.Zombie), "R2: the tracked Trove is no Zombie");
+            assertGt(manager.getTrove(z).recordedDebt, 0, "R2: a Zombie at zero debt is still tracked");
+        }
         // redistributed collateral waiting in the default account covers what the Troves have pending (floors)
         assertGe(manager.defaultColl(), sumPendColl, "L4: the default account cannot pay the pending collateral");
         // I-4 / B12: every named account is in the vault, and nothing unnamed is in the ledger

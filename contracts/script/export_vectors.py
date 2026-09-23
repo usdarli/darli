@@ -186,16 +186,25 @@ assert min(n_ins, n_rem, n_re) >= 50 and max_size >= 20 and ties >= 100, (n_ins,
 outl = Path(__file__).resolve().parent.parent / "test" / "vectors" / "sorted_list.json"
 outl.write_text(json.dumps({"ops": ops, "checks": checks}))
 
-# --- the branch trace (SPEC 4, 6, 8): see branch_trace.py -------------------------------------------------------------- #
+# --- the branch trace (SPEC 4, 5, 6, 8): see branch_trace.py -------------------------------------------------------------- #
 import branch_trace  # noqa: E402
 
 trace, tstats = branch_trace.build(random.Random(20260924))
 never_ok = [k for k, n in tstats["ok_by_kind"].items() if n == 0]
 never_refused = [k for k in ("open", "borrow", "repay", "withdraw", "adjust", "rate", "close", "sp_dep", "give",
-                             "liquidate") if tstats["bad_by_kind"][k] == 0]
+                             "liquidate", "redeem") if tstats["bad_by_kind"][k] == 0]
 assert not never_ok and not never_refused, f"trace does not exercise: accepted {never_ok}, refused {never_refused}"
 outt = Path(__file__).resolve().parent.parent / "test" / "vectors" / "branch_trace.json"
 outt.write_text(json.dumps(trace))
+
+# --- redemption routing across three branches (SPEC R1, R3, R5): see routing_trace.py ---------------------------------- #
+import routing_trace  # noqa: E402
+
+rtrace, rstats = routing_trace.build(random.Random(20260926))
+never_ok = [k for k, n in rstats["ok_by_kind"].items() if n == 0]
+assert not never_ok and rstats["bad_by_kind"]["redeem"] > 0, f"routing trace does not exercise: accepted {never_ok}"
+outr = Path(__file__).resolve().parent.parent / "test" / "vectors" / "routing_trace.json"
+outr.write_text(json.dumps(rtrace))
 
 # --- the Stability Pool on its own (SPEC SP2, SP4): see sp_trace.py ---------------------------------------------------- #
 import sp_trace  # noqa: E402
@@ -234,6 +243,14 @@ fig("branch_trace_full_checks", tstats["full_checks"])
 fig("branch_trace_liquidations", tstats["ok_by_kind"]["liquidate"])
 fig("branch_trace_liquidations_offset", tstats["liquidations"]["offset"])
 fig("branch_trace_liquidations_redistributed", tstats["liquidations"]["redistributed"])
+fig("branch_trace_redemptions", tstats["ok_by_kind"]["redeem"])
+fig("branch_trace_redeemed_to_zero", tstats["redemptions"]["zero"])
+fig("branch_trace_tracked_zombies", tstats["redemptions"]["tracked"])
+fig("branch_trace_zombies_back_through_adjust", tstats["redemptions"]["reactivated_adjust"])
+fig("routing_trace_steps", rstats["steps"])
+fig("routing_trace_redemptions", rstats["ok_by_kind"]["redeem"])
+fig("routing_trace_truncated", rstats["routing"]["truncated"])
+fig("routing_trace_by_debt", rstats["routing"]["by_debt"])
 dump("contracts")
 print(f"wrote {out} ({len(dp['out'])} decPow, {len(ia['out'])} stepA, {len(ib['out'])} stepB vectors, "
       f"{overflowing} of them beyond where debt * rate fits in 256 bits)")
@@ -242,6 +259,10 @@ print(f"wrote {outs} ({spstats['steps']} pool operations; {spstats['rescaling_of
 print(f"wrote {outt} ({tstats['steps']} steps: {tstats['ok']} accepted, {tstats['refused']} refused; "
       f"{tstats['troves']} Troves; {tstats['ok_by_kind']['liquidate']} liquidations, "
       f"{tstats['liquidations']['offset']} offset, {tstats['liquidations']['redistributed']} redistributed; "
+      f"{tstats['ok_by_kind']['redeem']} redemptions, {tstats['redemptions']['zero']} Troves redeemed to zero, "
+      f"{tstats['redemptions']['tracked']} left as the tracked Zombie; "
       f"{tstats['full_checks']} full checks; ends shut down)")
+print(f"wrote {outr} ({rstats['steps']} steps: {rstats['ok']} accepted, {rstats['refused']} refused; "
+      f"{rstats['ok_by_kind']['redeem']} redemptions, routing {rstats['routing']})")
 print(f"wrote {outl} ({n_ins} inserts, {n_rem} removals, {n_re} reinsertions; {len(checks['len'])} queues checked, "
       f"{ties} with tied rates, up to {max_size} Troves)")
