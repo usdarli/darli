@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {StableToken} from "../core/StableToken.sol";
+import {IBranchManager} from "../interfaces/IBranchManager.sol";
 
 /// @dev Minimal view of the Uniswap v4 PoolManager: only what deployment needs. Darli does not fork or import v4.
 struct PoolKey {
@@ -24,7 +25,8 @@ interface IPoolManagerInit {
 }
 
 /// @title DarliDeployer
-/// @notice Everything that happens exactly once. In ONE transaction it creates USDarli, seals its minter set, and initialises
+/// @notice Everything that happens exactly once. In ONE transaction it creates USDarli, checks that every branch was built
+///         for exactly that token, seals its minter set, and initialises
 ///         the canonical USDarli / quote pool in Uniswap v4 at par, with no hook. After `deploy` this contract can do
 ///         nothing: it has no other function and the token's deployer rights are spent.
 ///         "At par" means the representable sqrtPriceX96 at or just below one: exact for an 18-decimal quote and for a
@@ -59,6 +61,7 @@ contract DarliDeployer {
     error QuoteHasNoCode();
     error PoolStateLayoutMismatch();
     error PoolPriceOutOfRange();
+    error MinterNotBuiltForThisToken(address minter);
 
     event PoolWasPreInitialised();
     event Deployed(
@@ -97,6 +100,17 @@ contract DarliDeployer {
         deployed = true;
 
         token = new StableToken(name, symbol, address(this));
+        // Each branch was built before this transaction, with the token's predicted address as an immutable. Nothing
+        // else checks that prediction, and sealing a branch built for another address would make it a minter for ever
+        // of a token it does not mint. So every minter must name exactly this token before the set is closed; anything
+        // else -- no code, no `stable()`, another address -- reverts the whole deployment, which can then be retried.
+        // A one-time cost of one staticcall per branch; no operation after deployment reads anything more.
+        for (uint256 i = 0; i < minters.length; i++) {
+            (bool ok, bytes memory ret) = minters[i].staticcall(abi.encodeCall(IBranchManager.stable, ()));
+            if (!ok || ret.length != 32 || abi.decode(ret, (address)) != address(token)) {
+                revert MinterNotBuiltForThisToken(minters[i]);
+            }
+        }
         token.sealMinters(minters); // one shot: the minter set is closed for ever, for this contract too
 
         (address c0, address c1) = address(token) < quote ? (address(token), quote) : (quote, address(token));

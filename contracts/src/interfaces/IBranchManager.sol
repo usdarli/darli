@@ -23,7 +23,8 @@ interface IBranchManager {
     function onTroveTransfer(uint256 troveId) external;
 
     // --- views ---
-    /// @notice the stablecoin this branch mints; fixed at construction (SPEC §13 item 9 is how a deployment checks it).
+    /// @notice the stablecoin this branch mints; fixed at construction, and checked by the deployer before the minter
+    ///         set is sealed (SPEC D1).
     function stable() external view returns (IStableToken);
     function ledger() external view returns (BranchLedger memory);
     function getTrove(uint256 troveId) external view returns (Trove memory);

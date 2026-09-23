@@ -4,6 +4,12 @@ pragma solidity ^0.8.26;
 import {Test, Vm} from "forge-std/Test.sol";
 import {DarliDeployer, PoolKey, IPoolManagerInit} from "../src/deploy/DarliDeployer.sol";
 import {StableToken} from "../src/core/StableToken.sol";
+import {BranchManager, BranchConfig} from "../src/core/BranchManager.sol";
+import {IStableToken} from "../src/interfaces/IStableToken.sol";
+import {IPriceFeed} from "../src/interfaces/IPriceFeed.sol";
+import {IStabilityPool} from "../src/interfaces/IStabilityPool.sol";
+import {ICollateralVault, IFrontendRegistry, ITroveNFT, IRateSortedList} from "../src/interfaces/ICore.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {NotAuthorized} from "../src/Types.sol";
 
 uint160 constant MIN_SQRT_PRICE = 4295128739;
@@ -68,10 +74,19 @@ contract BrokenPoolManager is IPoolManagerInit {
     }
 }
 
+/// Answers `stable()` like a branch, with whatever address it was built for.
+contract StandInBranch {
+    address public stable;
+
+    constructor(address stable_) {
+        stable = stable_;
+    }
+}
+
 contract DarliDeployerTest is Test {
     MockPoolManager pm;
     DarliDeployer d;
-    address branch = address(0xB1);
+    address branch;
     address[] minters;
     // Quote tokens with code at controlled addresses, so the token ordering is chosen by the test. 0x1000 is below any
     // CREATE address (quote is currency0) and clear of every precompile; the maximum address is above any (quote is
@@ -82,9 +97,15 @@ contract DarliDeployerTest is Test {
     function setUp() public {
         pm = new MockPoolManager();
         d = new DarliDeployer();
+        branch = address(new StandInBranch(_tokenOf(d)));
         minters.push(branch);
         vm.etch(LOW_QUOTE, hex"00");
         vm.etch(HIGH_QUOTE, hex"00");
+    }
+
+    /// The address the deployer's `deploy` will create the token at: its first CREATE.
+    function _tokenOf(DarliDeployer dep) internal view returns (address) {
+        return vm.computeCreateAddress(address(dep), vm.getNonce(address(dep)));
     }
 
     function _price(uint160 sqrtP, bool stableIs0, uint8 dec) internal pure returns (uint256 quotePerStableWad) {
@@ -116,7 +137,9 @@ contract DarliDeployerTest is Test {
         (, uint160 sqrtP) = d.deploy("USDarli", "USDarli", minters, pm, lowQuote, 6, 100, 1);
         assertEq(sqrtP, uint160(2 ** 96) * 1e6);
         DarliDeployer d2 = new DarliDeployer();
-        (, uint160 sqrtP18) = d2.deploy("USDarli", "USDarli", minters, pm, lowQuote, 18, 100, 1);
+        address[] memory m2 = new address[](1);
+        m2[0] = address(new StandInBranch(_tokenOf(d2)));
+        (, uint160 sqrtP18) = d2.deploy("USDarli", "USDarli", m2, pm, lowQuote, 18, 100, 1);
         assertEq(sqrtP18, uint160(2 ** 96));
     }
 
@@ -238,5 +261,71 @@ contract DarliDeployerTest is Test {
     function test_unsupportedQuoteDecimalsRevert() public {
         vm.expectRevert(DarliDeployer.QuoteDecimalsUnsupported.selector);
         d.deploy("USDarli", "USDarli", minters, pm, LOW_QUOTE, 8, 100, 1);
+    }
+
+    // --- SPEC D1: every minter was built for exactly this token --------------------------------------------------------
+
+    function _realBranch(address stableAddress) internal returns (address) {
+        address one = address(1); // the parts are not called at construction; the stablecoin is the point here
+        return address(
+            new BranchManager(
+                BranchConfig({
+                    stable: IStableToken(stableAddress),
+                    collToken: IERC20(one),
+                    feed: IPriceFeed(one),
+                    vault: ICollateralVault(one),
+                    nft: ITroveNFT(one),
+                    list: IRateSortedList(one),
+                    stabilityPool: IStabilityPool(one),
+                    frontends: IFrontendRegistry(one),
+                    escrow: one,
+                    mcr: 110e16,
+                    ccr: 150e16,
+                    scr: 110e16,
+                    minDebt: 500e18,
+                    minRate: 5e15,
+                    maxRate: 250e16,
+                    cap0: 125_000e18,
+                    capCeiling: 250_000e18,
+                    gasDeposit: 0,
+                    spShare: 72e16,
+                    penSp: 5e16,
+                    penRedist: 10e16,
+                    liqBonus: 5e15,
+                    liqBonusCap: 2e18
+                })
+            )
+        );
+    }
+
+    /// A real BranchManager, built against the token's real predicted address, is accepted and sealed as a minter.
+    function test_branchBuiltForThePredictedToken_isSealed() public {
+        address[] memory m = new address[](1);
+        m[0] = _realBranch(_tokenOf(d));
+        (StableToken token,) = d.deploy("USDarli", "USDarli", m, pm, LOW_QUOTE, 6, 100, 1);
+        assertTrue(token.isMinter(m[0]), "D1: the branch built for this token is its minter");
+        assertEq(address(BranchManager(m[0]).stable()), address(token));
+    }
+
+    /// A branch built for any other address would be a minter for ever of a token it does not mint: refused, and the
+    /// deployment leaves nothing behind.
+    function test_minterBuiltForAnotherToken_isRefused() public {
+        address[] memory m = new address[](2);
+        m[0] = _realBranch(_tokenOf(d));
+        m[1] = _realBranch(address(0xDEAD)); // off by anything: a wrong nonce, a wrong deployer, a typo
+        vm.expectRevert(abi.encodeWithSelector(DarliDeployer.MinterNotBuiltForThisToken.selector, m[1]));
+        d.deploy("USDarli", "USDarli", m, pm, LOW_QUOTE, 6, 100, 1);
+        assertFalse(d.deployed(), "D1: a refused deployment leaves nothing behind and can be retried");
+    }
+
+    /// Something that cannot name its token is not a branch: an address without code, a contract without `stable()`.
+    function test_minterThatCannotNameItsToken_isRefused() public {
+        address[] memory m = new address[](1);
+        m[0] = address(0xB1);
+        vm.expectRevert(abi.encodeWithSelector(DarliDeployer.MinterNotBuiltForThisToken.selector, address(0xB1)));
+        d.deploy("USDarli", "USDarli", m, pm, LOW_QUOTE, 6, 100, 1);
+        m[0] = address(pm);
+        vm.expectRevert(abi.encodeWithSelector(DarliDeployer.MinterNotBuiltForThisToken.selector, address(pm)));
+        d.deploy("USDarli", "USDarli", m, pm, LOW_QUOTE, 6, 100, 1);
     }
 }

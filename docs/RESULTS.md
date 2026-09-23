@@ -26,9 +26,9 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | contracts/src/core/StabilityPool.sol | `6029b9716642bfd0` |
 | contracts/src/core/StableToken.sol | `8cf26fe81cb2b6f8` |
 | contracts/src/core/TroveNFT.sol | `dcc0a15f051eda3d` |
-| contracts/src/deploy/DarliDeployer.sol | `08d3369ccc31c66b` |
+| contracts/src/deploy/DarliDeployer.sol | `b875525cb54ec50f` |
 | contracts/src/interfaces/IBorrowerGateway.sol | `b287f9326f196a1f` |
-| contracts/src/interfaces/IBranchManager.sol | `a67cd0072133258f` |
+| contracts/src/interfaces/IBranchManager.sol | `98ce6a031394ea94` |
 | contracts/src/interfaces/ICore.sol | `58d10553bc790a76` |
 | contracts/src/interfaces/IPriceFeed.sol | `f2034a6189063139` |
 | contracts/src/interfaces/IStabilityPool.sol | `e31e002e2b1d94ea` |
@@ -41,7 +41,7 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | contracts/test/BranchManager.invariant.t.sol | `d01b1198b1201f40` |
 | contracts/test/BranchManager.t.sol | `b4378804181cff6a` |
 | contracts/test/BranchManager.trace.t.sol | `8784a12bee2725d6` |
-| contracts/test/DarliDeployer.t.sol | `ee25158d667ef970` |
+| contracts/test/DarliDeployer.t.sol | `212d414a4513e168` |
 | contracts/test/FixedPointMath.t.sol | `8727fe555bb91e53` |
 | contracts/test/Liquidation.t.sol | `98c49a26b1b94709` |
 | contracts/test/OracleFeed.t.sol | `50d9e9cabb388194` |
@@ -55,7 +55,7 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | contracts/test/vectors/math.json | `ee94c997bb9c3d9e` |
 | contracts/test/vectors/sorted_list.json | `aee5b22cb952dcd8` |
 | contracts/test/vectors/stability_pool.json | `10988275992dda22` |
-| docs/SPEC.md | `f642d0bfffcb48fc` |
+| docs/SPEC.md | `427343e145d28e9c` |
 | model/beta_pilot_compare.py | `64251462b830a798` |
 | model/check_figures.py | `a020fc9d36346070` |
 | model/check_manifest.py | `4ebce9af942c1e46` |
@@ -67,7 +67,7 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | model/mutants.py | `abdb8b031d4d53d4` |
 | model/pilot_sweep.py | `fedbe2706b9613eb` |
 | model/results/beta_pilot_compare.jsonl | `fa07685fba612226` |
-| model/results/figures.json | `803c5d1b9e146387` |
+| model/results/figures.json | `8d3b0fcfb6b23afc` |
 | model/results/pilot_seeds.jsonl | `93d76cc221a27b03` |
 | model/results/pilot_summary.jsonl | `3490a40155f0a8b5` |
 | model/spec_check.py | `35cc0cb81d8679d8` |
@@ -98,7 +98,7 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | redemption queue vectors | the same command | Python 3.12 | <!-- fig:contracts.list_vector_operations -->561<!-- /fig --> list operations (insertions, removals, rate changes) taken from a run of the model's branch, and <!-- fig:contracts.list_vector_queues_checked -->485<!-- /fig --> whole queues in the model's order, <!-- fig:contracts.list_vector_queues_with_ties -->449<!-- /fig --> of them holding tied rates, up to <!-- fig:contracts.list_vector_max_size -->80<!-- /fig --> Troves; `RateSortedList` reproduces every queue whether its hints are exact, empty, reversed, stale or arbitrary |
 | branch trace | the same command | Python 3.12 | <!-- fig:contracts.branch_trace_steps -->700<!-- /fig --> steps of the model's branch, <!-- fig:contracts.branch_trace_accepted -->471<!-- /fig --> accepted and <!-- fig:contracts.branch_trace_refused -->229<!-- /fig --> refused, over <!-- fig:contracts.branch_trace_troves -->39<!-- /fig --> Troves, with <!-- fig:contracts.branch_trace_liquidations -->27<!-- /fig --> liquidations (<!-- fig:contracts.branch_trace_liquidations_offset -->13<!-- /fig --> against the Stability Pool, <!-- fig:contracts.branch_trace_liquidations_redistributed -->24<!-- /fig --> redistributed, some both), ending shut down; every Trove and the queue compared in full <!-- fig:contracts.branch_trace_full_checks -->28<!-- /fig --> times; `BranchManager` accepts and refuses the same operations and matches every recorded number |
 | Stability Pool vectors | the same command | Python 3.12 | <!-- fig:contracts.sp_trace_steps -->400<!-- /fig --> operations on the model's pool; <!-- fig:contracts.sp_trace_rescaling_offsets -->32<!-- /fig --> offsets rescaled P, <!-- fig:contracts.sp_trace_multi_rescale_offsets -->4<!-- /fig --> of them more than once, up to scale <!-- fig:contracts.sp_trace_max_scale -->36<!-- /fig -->; `StabilityPool` matches every value of the pool and of every depositor |
-| Solidity | `forge test` | forge 1.5.1-stable, solc 0.8.26 | <!-- fig:contracts.declared_tests -->73<!-- /fig --> passed, 0 failed; `check_test_count.py` confirms forge ran exactly the declared number |
+| Solidity | `forge test` | forge 1.5.1-stable, solc 0.8.26 | <!-- fig:contracts.declared_tests -->76<!-- /fig --> passed, 0 failed; `check_test_count.py` confirms forge ran exactly the declared number |
 | pilot tables | `python3 pilot_sweep.py 0 6 20` | Python 3.12 | shipped in `results/`; hardest case rerun identical |
 
 All on the release commit, 2026-09-22, Linux x86-64. A hash match proves a file is the one recorded; this table records that the results were produced by running these files.
