@@ -1,6 +1,10 @@
 {
   "contracts": {
-    "declared_tests": "37",
+    "declared_tests": "48",
+    "list_vector_max_size": "80",
+    "list_vector_operations": "561",
+    "list_vector_queues_checked": "485",
+    "list_vector_queues_with_ties": "449",
     "vectors_stepB_beyond_256_bit_product": "64",
     "vectors_total": "1,292"
   },
@@ -26,12 +30,12 @@
   },
   "mutants": {
     "mutants_invalid": "0",
-    "mutants_killed": "32",
+    "mutants_killed": "33",
     "mutants_killed_by_a_fuzzer": "13",
     "mutants_killed_by_fuzz": "7",
     "mutants_killed_by_fuzz_oracle": "6",
     "mutants_survived": "0",
-    "mutants_total": "32"
+    "mutants_total": "33"
   },
   "scenarios": {
     "claim_order_earlier_claims": "100",
@@ -49,8 +53,8 @@
     "path_gas_paid_eth": "0.030",
     "path_gas_posted_eth": "0.030",
     "path_tolerance_wei": "6",
-    "scenarios_passed": "30",
-    "scenarios_total": "30",
+    "scenarios_passed": "31",
+    "scenarios_total": "31",
     "settle_batch_size": "50",
     "settle_batches": "30",
     "settle_troves": "1,500",

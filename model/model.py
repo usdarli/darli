@@ -1135,14 +1135,18 @@ class Branch:
         return amt
 
     # -- redemption inside the branch (SPEC 5) ------------------------------------
+    def redemption_order(self):
+        """SPEC R2: Active Troves, lowest rate first, ties by the lower Trove id. A total order, so the sorted list in
+        contracts/ (RateSortedList) holds exactly this sequence whatever hints it was given; export_vectors.py checks it."""
+        return sorted((t for t in self.troves.values() if t.status == ACTIVE), key=lambda t: (t.rate, t.id))
+
     def redeem_from_branch(self, redeemer, amount, price, fee_rate, max_iter, redemption_price=None):
         """`price` decides redeemability (ICR >= 100%); `redemption_price` converts debt to collateral."""
         redemption_price = redemption_price or price
         self._step_a()
         remaining, coll_total, it = amount, 0, 0
         first = [self.troves[self.last_zombie]] if self.last_zombie else []
-        queue = first + sorted((t for t in self.troves.values() if t.status == ACTIVE),
-                               key=lambda t: (t.rate, t.id))
+        queue = first + self.redemption_order()
         for t in queue:
             if remaining == 0 or it >= max_iter:
                 break

@@ -11,17 +11,18 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 
 | file | hash |
 | --- | --- |
-| contracts/foundry.toml | `a9cdfda1b8a7cf0f` |
+| contracts/foundry.toml | `f7e31bb8013021b6` |
 | contracts/remappings.txt | `79f11452d3ebfaa9` |
 | contracts/script/check_test_count.py | `fce577ae0f91f146` |
-| contracts/script/export_vectors.py | `61b7e4107db14cf0` |
+| contracts/script/export_vectors.py | `50177b1f999c92b7` |
 | contracts/src/Types.sol | `52053aad004887d7` |
 | contracts/src/core/InterestEscrow.sol | `01ec1eaffa0acde7` |
+| contracts/src/core/RateSortedList.sol | `9f71240f01bc507d` |
 | contracts/src/core/StableToken.sol | `8cf26fe81cb2b6f8` |
 | contracts/src/deploy/DarliDeployer.sol | `08d3369ccc31c66b` |
 | contracts/src/interfaces/IBorrowerGateway.sol | `5d1d6c3efaff2bcb` |
 | contracts/src/interfaces/IBranchManager.sol | `d444a10ab1baa8e4` |
-| contracts/src/interfaces/ICore.sol | `f4827b5877795b95` |
+| contracts/src/interfaces/ICore.sol | `94c51384fc10acdf` |
 | contracts/src/interfaces/IPriceFeed.sol | `f2034a6189063139` |
 | contracts/src/interfaces/IStabilityPool.sol | `9a19c2783f019916` |
 | contracts/src/interfaces/IStableToken.sol | `32c3ee6d5eebfec1` |
@@ -32,28 +33,31 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | contracts/test/DarliDeployer.t.sol | `ee25158d667ef970` |
 | contracts/test/FixedPointMath.t.sol | `8727fe555bb91e53` |
 | contracts/test/OracleFeed.t.sol | `50d9e9cabb388194` |
+| contracts/test/RateSortedList.invariant.t.sol | `8fa8e6a375e4ed7d` |
+| contracts/test/RateSortedList.t.sol | `85ae503e09a92cf0` |
 | contracts/test/StableToken.t.sol | `049ab75f2a809d16` |
 | contracts/test/mocks/OracleMocks.sol | `1edf7f875d9e124d` |
 | contracts/test/vectors/math.json | `ee94c997bb9c3d9e` |
-| docs/SPEC.md | `7d49ea0d503bb812` |
+| contracts/test/vectors/sorted_list.json | `aee5b22cb952dcd8` |
+| docs/SPEC.md | `60664ed8dce2c7f7` |
 | model/beta_pilot_compare.py | `64251462b830a798` |
 | model/check_figures.py | `a020fc9d36346070` |
-| model/check_manifest.py | `965c3dab333a8c64` |
+| model/check_manifest.py | `8af5946459051277` |
 | model/econ_sim.py | `879485b31c7fc5a0` |
 | model/figures.py | `369609e969c9154a` |
 | model/fuzz.py | `4f1e47e68c2212d3` |
 | model/fuzz_oracle.py | `4d286d579088865a` |
-| model/model.py | `cff6b6b56e6d668b` |
-| model/mutants.py | `97bed8387dce4fa4` |
+| model/model.py | `35a08f740d048545` |
+| model/mutants.py | `abdb8b031d4d53d4` |
 | model/pilot_sweep.py | `fedbe2706b9613eb` |
 | model/results/beta_pilot_compare.jsonl | `fa07685fba612226` |
-| model/results/figures.json | `41a900e74b67c7d8` |
+| model/results/figures.json | `357671e0baec707a` |
 | model/results/pilot_seeds.jsonl | `93d76cc221a27b03` |
 | model/results/pilot_summary.jsonl | `3490a40155f0a8b5` |
-| model/spec_check.py | `45ea1531c050a6d5` |
+| model/spec_check.py | `35cc0cb81d8679d8` |
 | model/study_figures.py | `b48e908d52ad4f07` |
 | model/test_econ_sim.py | `4e0aa5314c0d81a3` |
-| model/test_scenarios.py | `8f5664f6345e71d6` |
+| model/test_scenarios.py | `e64a95b3deda5e7b` |
 
 ### Submodules, at the commit this release pins
 
@@ -66,16 +70,17 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 
 | group | command | tool | result |
 | --- | --- | --- | --- |
-| scenarios | `python3 test_scenarios.py` | Python 3.12 | <!-- fig:scenarios.scenarios_passed -->30<!-- /fig -->/<!-- fig:scenarios.scenarios_total -->30<!-- /fig --> passed |
+| scenarios | `python3 test_scenarios.py` | Python 3.12 | <!-- fig:scenarios.scenarios_passed -->31<!-- /fig -->/<!-- fig:scenarios.scenarios_total -->31<!-- /fig --> passed |
 | simulator self-tests | `python3 test_econ_sim.py` | Python 3.12 | <!-- fig:econ_sim.econ_sim_passed -->8<!-- /fig -->/<!-- fig:econ_sim.econ_sim_total -->8<!-- /fig --> passed |
 | accounting fuzzer | `python3 fuzz.py 30 300` | Python 3.12 | no property violated (max eps <!-- fig:fuzz.fuzz_max_eps_wei -->17<!-- /fig --> wei); <!-- fig:fuzz.fuzz_troves_rewarded -->51<!-- /fig --> Troves rewarded; every operation met its coverage floor |
 | oracle fuzzer | `python3 fuzz_oracle.py 200 150` | Python 3.12 | no property violated |
-| mutants | `python3 mutants.py` | Python 3.12 | <!-- fig:mutants.mutants_total -->32<!-- /fig --> run, <!-- fig:mutants.mutants_killed -->32<!-- /fig --> killed, <!-- fig:mutants.mutants_survived -->0<!-- /fig --> survived, <!-- fig:mutants.mutants_invalid -->0<!-- /fig --> invalid |
-| spec mapping | `python3 spec_check.py` | Python 3.12 | all 30 scenarios and all 32 mutants cited and exist |
+| mutants | `python3 mutants.py` | Python 3.12 | <!-- fig:mutants.mutants_total -->33<!-- /fig --> run, <!-- fig:mutants.mutants_killed -->33<!-- /fig --> killed, <!-- fig:mutants.mutants_survived -->0<!-- /fig --> survived, <!-- fig:mutants.mutants_invalid -->0<!-- /fig --> invalid |
+| spec mapping | `python3 spec_check.py` | Python 3.12 | every scenario, every mutant and every Foundry test that `docs/SPEC.md` cites exists, and every scenario and mutant is cited |
 | manifest | `python3 check_manifest.py` | Python 3.12 | all hashes match, all required files listed |
 | figures | `python3 check_figures.py` | Python 3.12 | every figure quoted below matches the run that produced it |
 | differential vectors | `python3 contracts/script/export_vectors.py model` | Python 3.12 | <!-- fig:contracts.vectors_total -->1,292<!-- /fig --> vectors, identical to the shipped file; <!-- fig:contracts.vectors_stepB_beyond_256_bit_product -->64<!-- /fig --> of them exercise step B where `debt × rate` exceeds 256 bits |
-| Solidity | `forge test` | forge 1.5.1-stable, solc 0.8.26 | <!-- fig:contracts.declared_tests -->37<!-- /fig --> passed, 0 failed; `check_test_count.py` confirms forge ran exactly the declared number |
+| redemption queue vectors | the same command | Python 3.12 | <!-- fig:contracts.list_vector_operations -->561<!-- /fig --> list operations (insertions, removals, rate changes) taken from a run of the model's branch, and <!-- fig:contracts.list_vector_queues_checked -->485<!-- /fig --> whole queues in the model's order, <!-- fig:contracts.list_vector_queues_with_ties -->449<!-- /fig --> of them holding tied rates, up to <!-- fig:contracts.list_vector_max_size -->80<!-- /fig --> Troves; `RateSortedList` reproduces every queue whether its hints are exact, empty, reversed, stale or arbitrary |
+| Solidity | `forge test` | forge 1.5.1-stable, solc 0.8.26 | <!-- fig:contracts.declared_tests -->48<!-- /fig --> passed, 0 failed; `check_test_count.py` confirms forge ran exactly the declared number |
 | pilot tables | `python3 pilot_sweep.py 0 6 20` | Python 3.12 | shipped in `results/`; hardest case rerun identical |
 
 All on the release commit, 2026-09-22, Linux x86-64. A hash match proves a file is the one recorded; this table records that the results were produced by running these files.
@@ -84,7 +89,7 @@ All on the release commit, 2026-09-22, Linux x86-64. A hash match proves a file 
 
 Every number below is recorded by the run that computes it and checked by `python3 check_figures.py`; none is typed in by hand.
 
-- `test_scenarios.py`: **<!-- fig:scenarios.scenarios_passed -->30<!-- /fig -->/<!-- fig:scenarios.scenarios_total -->30<!-- /fig --> scenarios passed** (scenario 27(c) tests the rounding bound with a <!-- fig:scenarios.claim_order_earlier_claims -->100<!-- /fig -->-claim case)
+- `test_scenarios.py`: **<!-- fig:scenarios.scenarios_passed -->31<!-- /fig -->/<!-- fig:scenarios.scenarios_total -->31<!-- /fig --> scenarios passed** (scenario 27(c) tests the rounding bound with a <!-- fig:scenarios.claim_order_earlier_claims -->100<!-- /fig -->-claim case)
 - `fuzz.py 30 300`: <!-- fig:fuzz.fuzz_stats -->{'ok': 4252, 'reverted': 903, 'max_eps': 17, 'max_ratio': 0.4444444444444444, 'shutdowns': 33, 'with_bad_debt': 18, 'troves_rewarded': 51, 'gas_paid_total': 51000000000000000}<!-- /fig -->
   The first branch posts a deposit, so the run asserts both that a deposit exists and that rewards were actually paid.
 - `fuzz_oracle.py 200 150`: <!-- fig:fuzz_oracle.fuzz_oracle_stats -->{'Valid': 1243, 'PriceInvalid': 1016, 'NetworkUnstable': 3104, 'Failed': 2814, 'revert': 2364}<!-- /fig -->
@@ -98,7 +103,7 @@ Stability Pool deposits <!-- fig:fuzz.fuzz_ops_sp_dep -->61<!-- /fig -->, settle
 settlement of a written-off Trove <!-- fig:fuzz.fuzz_ops_late -->8<!-- /fig -->, late-recovery claims <!-- fig:fuzz.fuzz_ops_claim_late -->11<!-- /fig -->; <!-- fig:fuzz.fuzz_shutdowns -->33<!-- /fig --> branches shut down over the run.
 
 ### What the random testers kill on their own
-Of <!-- fig:mutants.mutants_total -->32<!-- /fig --> mutants, all <!-- fig:mutants.mutants_killed -->32<!-- /fig --> are killed, but only <!-- fig:mutants.mutants_killed_by_a_fuzzer -->13<!-- /fig --> are killed by a random tester with no scenario at all
+Of <!-- fig:mutants.mutants_total -->33<!-- /fig --> mutants, all <!-- fig:mutants.mutants_killed -->33<!-- /fig --> are killed, but only <!-- fig:mutants.mutants_killed_by_a_fuzzer -->13<!-- /fig --> are killed by a random tester with no scenario at all
 (<!-- fig:mutants.mutants_killed_by_fuzz -->7<!-- /fig --> by the accounting fuzzer, <!-- fig:mutants.mutants_killed_by_fuzz_oracle -->6<!-- /fig --> by the
 oracle fuzzer). The fuzzers are invariant checkers, not behavioural oracles: the scenarios carry the rest, and the
 conformance map in `docs/SPEC.md` 12 is written against these counts rather than against the mere existence of a fuzzer.
