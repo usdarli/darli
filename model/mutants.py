@@ -112,6 +112,8 @@ MUTANTS = {
         "            if t.status == ZOMBIE:\n                # SPEC B4: back at the minimum", "            if False:\n                # SPEC B4: back at the minimum"),
     "M46 a redemption request above the redeemer's balance is accepted and truncated instead of refused": (
         "        require(self.stable.bal[redeemer] >= amount, \"redemption", "        require(True or self.stable.bal[redeemer] >= amount, \"redemption"),
+    "M47 a redemption price below the price is used for the conversion as it is": (
+        "        redemption_price = max(redemption_price or price, price)", "        redemption_price = redemption_price or price"),
 }
 
 

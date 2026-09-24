@@ -30,7 +30,7 @@ contract MockPriceFeed is IPriceFeed {
         status = status_;
     }
 
-    /// A conservative redemption price below the market price (SPEC R4); 0 restores plain collateral.
+    /// A redemption price other than the price, above or below it (SPEC R4); 0 restores plain collateral.
     function setRedemptionPrice(uint256 redemptionPrice_) external {
         redemptionPrice = redemptionPrice_;
     }

@@ -492,7 +492,8 @@ contract BranchManager is IBranchManager, IBorrowerGateway, ILiquidations, IBran
 
     /// @notice Only the CollateralRegistry, with the prices it just read from `redemptionState` and one fee rate for the
     ///         whole redemption. Walks the tracked Zombie first, then the queue from its lowest (rate, id) (R2); skips a
-    ///         Trove below 100 % ICR at `price` but counts it as an iteration; converts debt at `redemptionPrice` (R4);
+    ///         Trove below 100 % ICR at `price` but counts it as an iteration; converts debt at the higher of
+    ///         `redemptionPrice` and `price` (R4);
     ///         leaves the fee in the Trove as collateral (R7). A Trove left under the minimum becomes a Zombie and leaves
     ///         the queue; with debt left, it is the one redeemed first next time. Burns only from the redeemer.
     function redeemFromBranch(
@@ -505,6 +506,9 @@ contract BranchManager is IBranchManager, IBorrowerGateway, ILiquidations, IBran
     ) external nonReentrant returns (uint256 redeemed, uint256 collOut) {
         if (msg.sender != collateralRegistry) revert NotAuthorized();
         _requireLive();
+        // R4: never converted below `price`, whatever the feed returns, so a Trove at or above 100 % never gives up more
+        // collateral per unit of debt than it holds, and its ICR never falls
+        if (redemptionPrice < price) redemptionPrice = price;
         _stepA();
         uint256 remaining = amount;
         uint256 id = _lastZombie;

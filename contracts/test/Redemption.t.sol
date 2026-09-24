@@ -127,10 +127,10 @@ contract RedemptionTest is BranchFixture {
         _open(alice, 200 * E, 20_000 * E, 6 * PCT);
         _give(bob, carol, 10_000 * E);
         vm.warp(block.timestamp + 1 days);
-        feed.setRedemptionPrice(1900 * E); // a conservative price under the market's 2,000
+        feed.setRedemptionPrice(2100 * E); // above the price of 2,000: redemption dearer for the redeemer
         uint256 r = 3_000 * E;
         uint256 rate = _expectedFeeRate(r);
-        uint256 out = r * WAD / (1900 * E);
+        uint256 out = r * WAD / (2100 * E);
         uint256 toRedeemer = out - out * rate / WAD;
         uint256 coll = manager.troveColl(t);
         uint256 before = weth.balanceOf(carol);
@@ -139,9 +139,33 @@ contract RedemptionTest is BranchFixture {
         assertEq(coll - manager.troveColl(t), toRedeemer, "R7: the fee stays in the Trove as collateral");
     }
 
-    /// I-8 for plain collateral (the two prices equal): taking R of debt and R / price, less the fee, of collateral
-    /// from a Trove at or above 100 % never lowers its ICR. Checked by cross-multiplication, as in the model.
-    function testFuzz_aRedemptionNeverLowersTheIcrOfATroveAt100PercentOrMore(uint256 amount, uint256 price) public {
+    function test_aRedemptionPriceBelowThePriceIsRaisedToIt() public {
+        _open(bob, 400 * E, 50_000 * E, 5 * PCT);
+        uint256 t = _open(alice, 12 * E, 20_000 * E, 1 * PCT); // the head of the queue, about 120 %
+        _give(bob, carol, 30_000 * E);
+        feed.set(1760 * E, PriceStatus.Valid); // the head at about 105 %
+        feed.setRedemptionPrice(1600 * E); // ... and under 100 % at the feed's redemption price
+        uint256 d = manager.troveDebt(t);
+        uint256 c = manager.troveColl(t);
+        assertLt(c * 1600 * E / d, WAD, "the head is under 100 % at the feed's redemption price");
+        uint256 rate = _expectedFeeRate(d);
+        uint256 out = d * WAD / (1760 * E);
+        uint256 toRedeemer = out - out * rate / WAD;
+        uint256 before = weth.balanceOf(carol);
+        _redeem(carol, d, 1); // at 1,600 the Trove would owe more collateral than it holds, and the redemption revert
+        assertEq(weth.balanceOf(carol) - before, toRedeemer, "R4: converted at the price, not below it");
+        assertEq(manager.troveColl(t), c - toRedeemer, "R4: the Trove keeps what the conversion at the price leaves");
+        assertEq(manager.troveDebt(t), 0);
+    }
+
+    /// I-8: taking R of debt and R / max(price, redemptionPrice), less the fee, of collateral from a Trove at or above
+    /// 100 % at `price` never lowers its ICR, whichever side of the price the feed's redemption price is on. Checked by
+    /// cross-multiplication, as in the model.
+    function testFuzz_aRedemptionNeverLowersTheIcrOfATroveAt100PercentOrMore(
+        uint256 amount,
+        uint256 price,
+        uint256 redemptionPrice
+    ) public {
         _open(bob, 500 * E, 50_000 * E, 5 * PCT);
         uint256 t = _open(alice, 12 * E, 20_000 * E, 1 * PCT); // the head of the queue, ICR about 120 %
         _give(bob, carol, 30_000 * E);
@@ -149,6 +173,7 @@ contract RedemptionTest is BranchFixture {
         uint256 c0 = manager.troveColl(t);
         price = bound(price, (d0 * WAD + c0 - 1) / c0, 3000 * E); // from exactly 100 % upwards
         feed.set(price, PriceStatus.Valid);
+        feed.setRedemptionPrice(bound(redemptionPrice, price / 2, price * 2));
         amount = bound(amount, 1, 30_000 * E);
         _redeem(carol, amount, 1);
         assertGe(manager.troveColl(t) * d0, c0 * manager.troveDebt(t), "I-8: a redemption lowered the ICR");

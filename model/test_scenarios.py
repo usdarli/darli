@@ -1523,6 +1523,42 @@ def scenario_33_zombie_borrowing_back_rejoins_the_queue():
     return "re-borrowed Zombie back in the queue via " + " and ".join(out)
 
 
+def scenario_34_redemption_price_never_below_the_price():
+    """SPEC R4: the branch converts debt at max(price, redemptionPrice). (a) A feed whose redemption price is below its
+    price: a Trove at 105 % at the price but under 100 % at the redemption price is redeemed in full at the price, and
+    keeps the rest of its collateral; converted at the feed's lower price it would owe more than it holds. (b) A redemption
+    price above the price is used as it is. Expectations from the rule: out = R / conversion price, less the fee
+    floor + R / supply (base rate 0, beta 1)."""
+    clock, s, b, weth, feed = setup()
+    fund(weth, "o", 1000 * E)
+    fund(weth, "w", 100 * E)
+    to = b.open_trove("o", 400 * E, 50_000 * E, 5 * PCT)
+    tw = b.open_trove("w", 12 * E, 20_000 * E, 1 * PCT)          # the head of the queue, about 120 %
+    feed.price = 1760 * E                                          # the head at about 105 %, the branch far above SCR
+    feed.redemption_price = 1600 * E                               # ... and under 100 % at the feed's redemption price
+    w = b.troves[tw]
+    d, c = b.debt_now(w), b.coll_now(w)
+    assert c * feed.price // d >= WAD > c * feed.redemption_price // d
+    supply, got = s.stable.supply, weth.bal["o"]
+    s.redeem("o", d, max_iter=1)
+    rate = WAD // 200 + d * WAD * WAD // (supply * WAD)
+    out = d * WAD // (1760 * E)
+    to_redeemer = out - out * rate // WAD
+    assert weth.bal["o"] - got == to_redeemer, "R4: a redemption price below the price must be raised to the price"
+    assert w.debt == 0 and w.coll == c - to_redeemer > 0, "R4: the Trove keeps what the conversion at the price leaves"
+    # (b) a redemption price above the price converts as it is
+    feed.redemption_price = 1900 * E
+    o0, supply, got = b.coll_now(b.troves[to]), s.stable.supply, weth.bal["o"]
+    decayed = s.base_rate                                          # same block: no decay since the last redemption
+    s.redeem("o", 3_000 * E, max_iter=5)
+    rate = min(WAD // 200 + min(decayed + 3_000 * E * WAD * WAD // (supply * WAD), WAD), WAD)
+    out = 3_000 * E * WAD // (1900 * E)
+    assert weth.bal["o"] - got == out - out * rate // WAD, "R4: a higher redemption price is used as it is"
+    assert o0 - b.coll_now(b.troves[to]) == out - out * rate // WAD, "R7: the fee stays in the Trove"
+    check_invariants(s, "34")
+    return "redemption price 1,600 under a price of 1,760 converted at 1,760; 1,900 above it used as it is"
+
+
 SCENARIOS = [v for k, v in sorted(globals().items()) if k.startswith("scenario_")]
 
 if __name__ == "__main__":

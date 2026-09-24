@@ -94,11 +94,16 @@ class Feed:
         self.price = price
         self.status = VALID
         self.last_good = price
+        self.redemption_price = None            # None: plain collateral, the redemption price is the price
 
     def fetch(self):
         if self.status == VALID:
             self.last_good = self.price
         return self.price, self.status
+
+    def fetch_redemption(self):
+        price, status = self.fetch()
+        return (self.redemption_price if self.redemption_price and status == VALID else price), status
 
 
 
@@ -210,6 +215,10 @@ class OracleFeed:
 
     def _sequencer_ok_for(self, duration):
         return self.seq is None or (self.seq.is_up and self.clock.now - self.seq.since >= duration)
+
+    def fetch_redemption(self, gas=10**7):
+        """Plain collateral: the redemption price is a second read of the same price, as in SingleSourcePriceFeed."""
+        return self.fetch(gas)
 
     def fetch(self, gas=10**7):
         now = self.clock.now
@@ -1148,8 +1157,10 @@ class Branch:
         return sorted((t for t in self.troves.values() if t.status == ACTIVE), key=lambda t: (t.rate, t.id))
 
     def redeem_from_branch(self, redeemer, amount, price, fee_rate, max_iter, redemption_price=None):
-        """`price` decides redeemability (ICR >= 100%); `redemption_price` converts debt to collateral."""
-        redemption_price = redemption_price or price
+        """`price` decides redeemability (ICR >= 100%); `redemption_price` converts debt to collateral, never below
+        `price` (SPEC R4): a feed can make redemption dearer for the redeemer, never cheaper, so the conversion never
+        draws more than a Trove at 100 % or more holds"""
+        redemption_price = max(redemption_price or price, price)
         self._step_a()
         remaining, coll_total, it = amount, 0, 0
         first = [self.troves[self.last_zombie]] if self.last_zombie else []
@@ -1509,26 +1520,28 @@ class System:
                 continue
             price, status = b.feed.fetch()
             if status == VALID and b.tcr(price) >= b.scr:
-                live.append((b, price))
+                rprice, rstatus = b.feed.fetch_redemption()
+                if rstatus == VALID and rprice:
+                    live.append((b, price, rprice))
         require(live, "no branch with a valid price")
         # SPEC-GAP 4: the fee is fixed from the *requested* amount before redeeming,
         # because the collateral fee of every trove needs the rate up front.
         supply_before = self.stable.supply
         beta_w = self.beta_wad()                 # sampled once: the fee and the base-rate update must use the SAME beta
-        unbacked = [max(b.agg_debt - max(b.sp.total - MIN_SP_RESIDUAL, 0), 0) for b, _ in live]
+        unbacked = [max(b.agg_debt - max(b.sp.total - MIN_SP_RESIDUAL, 0), 0) for b, _, _ in live]
         if sum(unbacked):
             weights = unbacked
             # never redeem more than the total unbacked in one call: beyond that point the
             # proportions would no longer reflect which branch lacks SP backing
             amount = min(amount, sum(unbacked))
         else:
-            weights = [b.agg_debt for b, _ in live]
+            weights = [b.agg_debt for b, _, _ in live]
         require(sum(weights) > 0, "no debt to redeem against")
         fee_rate, _ = self.redemption_fee_rate(amount)
         require(fee_rate <= max_fee_rate, "fee rate > max")
         redeemed_total, out = 0, {}
         left_amt, left_w = amount, sum(weights)
-        for (b, price), w in zip(live, weights):
+        for (b, price, rprice), w in zip(live, weights):
             if w == 0:
                 continue
             share = left_amt * w // left_w      # running remainder: shares add up to `amount` exactly
@@ -1536,7 +1549,7 @@ class System:
             left_w -= w
             if share == 0:
                 continue
-            red, coll = b.redeem_from_branch(redeemer, share, price, fee_rate, max_iter)
+            red, coll = b.redeem_from_branch(redeemer, share, price, fee_rate, max_iter, redemption_price=rprice)
             redeemed_total += red
             out[b.name] = coll
         decayed, minutes = self._decayed_base_rate()
