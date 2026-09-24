@@ -39,6 +39,8 @@ contract BranchSettlementTraceTest is BranchFixture {
     }
 
     function _fund(string memory json) internal {
+        assertEq(BETA_WAD, vm.parseJsonUint(json, ".config.betaWad"), "R5: the fixture's beta is the model's");
+        assertEq(INITIAL_BASE_RATE, vm.parseJsonUint(json, ".config.initialBaseRate"), "R6: so is its base rate");
         uint256 funding = vm.parseJsonUint(json, ".config.funding");
         for (uint256 i = 0; i < vm.parseJsonUint(json, ".config.users"); i++) {
             weth.mint(account(i), funding);

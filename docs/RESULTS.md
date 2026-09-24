@@ -11,16 +11,16 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 
 | file | hash |
 | --- | --- |
-| contracts/fork/BaseFork.t.sol | `99700e44443eb01f` |
+| contracts/fork/BaseFork.t.sol | `1d14017c8fb279ac` |
 | contracts/foundry.toml | `8e5576a6ce9c627f` |
 | contracts/remappings.txt | `92d8fe713d1d0c46` |
-| contracts/script/DarliSystem.s.sol | `d2004bb2e9bbae8e` |
-| contracts/script/branch_trace.py | `d95106de8ba564cb` |
+| contracts/script/DarliSystem.s.sol | `1513ffdabf125a6b` |
+| contracts/script/branch_trace.py | `82843e4c3260e94c` |
 | contracts/script/check_test_count.py | `fce577ae0f91f146` |
 | contracts/script/export_vectors.py | `409b859cf07cda01` |
 | contracts/script/lp_trace.py | `0494d540dd3b75ff` |
-| contracts/script/routing_trace.py | `ff1ba8ff3a0eae34` |
-| contracts/script/settle_trace.py | `17b1d9a9b733eb93` |
+| contracts/script/routing_trace.py | `404ae6afdd020d37` |
+| contracts/script/settle_trace.py | `7db8d6ebd5870cc3` |
 | contracts/script/sp_trace.py | `0ba08268a534e3d9` |
 | contracts/script/staking_trace.py | `343ee0e60a543411` |
 | contracts/src/Types.sol | `17ecf24b13aaa078` |
@@ -49,17 +49,17 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | contracts/src/oracle/ChainlinkAdapters.sol | `7dbadd9f5f79d2d7` |
 | contracts/src/oracle/SingleSourcePriceFeed.sol | `41aa13e9ad6b65cc` |
 | contracts/src/revenue/DarliStaking.sol | `9f96ba55546198b3` |
-| contracts/src/revenue/DarliToken.sol | `f381b8d1f8aba766` |
+| contracts/src/revenue/DarliToken.sol | `3f785622bea91fd8` |
 | contracts/src/revenue/RevenueRouter.sol | `5e62faed65197df7` |
-| contracts/test/BranchFixture.sol | `8ef1321ded669942` |
+| contracts/test/BranchFixture.sol | `c32bac0957efa067` |
 | contracts/test/BranchManager.invariant.t.sol | `df1ad3a1d488923e` |
 | contracts/test/BranchManager.t.sol | `12aaf35f1bd94563` |
-| contracts/test/BranchManager.trace.t.sol | `9e3687fa61ebd1e9` |
-| contracts/test/BranchSettlement.trace.t.sol | `0b1e9d0b2dc36d14` |
-| contracts/test/CollateralRegistry.trace.t.sol | `b84159968dbe0924` |
+| contracts/test/BranchManager.trace.t.sol | `3664646a75ffd061` |
+| contracts/test/BranchSettlement.trace.t.sol | `1b96f047f1c94d0b` |
+| contracts/test/CollateralRegistry.trace.t.sol | `7a39073118a06095` |
 | contracts/test/DarliDeployer.t.sol | `80687e3ede7e8e5c` |
 | contracts/test/DarliStaking.trace.t.sol | `fc6ef201f9d70b7a` |
-| contracts/test/DarliSystem.t.sol | `431ec16c8c081dab` |
+| contracts/test/DarliSystem.t.sol | `40308903b35b6d27` |
 | contracts/test/FixedPointMath.t.sol | `8727fe555bb91e53` |
 | contracts/test/LPFeeAccounting.trace.t.sol | `318e34068046e549` |
 | contracts/test/Liquidation.t.sol | `98c49a26b1b94709` |
@@ -75,35 +75,35 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | contracts/test/mocks/BranchMocks.sol | `dcc3313ca6048a53` |
 | contracts/test/mocks/OracleMocks.sol | `1edf7f875d9e124d` |
 | contracts/test/mocks/PoolMocks.sol | `1551dd98393e5ddf` |
-| contracts/test/vectors/branch_trace.json | `ec1cd8f258370056` |
+| contracts/test/vectors/branch_trace.json | `b8a0753d93ec4170` |
 | contracts/test/vectors/lp_trace.json | `caa5b3576a6b6349` |
 | contracts/test/vectors/math.json | `ee94c997bb9c3d9e` |
-| contracts/test/vectors/routing_trace.json | `2c764725c5720116` |
-| contracts/test/vectors/settle_trace_absorb.json | `3105b735c334d199` |
-| contracts/test/vectors/settle_trace_empty.json | `299bb5d5735cfc15` |
-| contracts/test/vectors/settle_trace_failure.json | `270d7aef56cf01f1` |
-| contracts/test/vectors/settle_trace_haircut.json | `d6df7365ad888526` |
+| contracts/test/vectors/routing_trace.json | `27604085e8fe4e08` |
+| contracts/test/vectors/settle_trace_absorb.json | `6392e83414bfeadb` |
+| contracts/test/vectors/settle_trace_empty.json | `48ef40a8f18cab3a` |
+| contracts/test/vectors/settle_trace_failure.json | `346dce546257a82b` |
+| contracts/test/vectors/settle_trace_haircut.json | `def016474386eba8` |
 | contracts/test/vectors/sorted_list.json | `aee5b22cb952dcd8` |
 | contracts/test/vectors/stability_pool.json | `10988275992dda22` |
 | contracts/test/vectors/staking_trace.json | `46d5ccd5f5b8bf6c` |
-| docs/SPEC.md | `22f36a49c28fd206` |
+| docs/SPEC.md | `f736d1d51dcd848e` |
 | model/beta_pilot_compare.py | `64251462b830a798` |
 | model/check_figures.py | `a020fc9d36346070` |
 | model/check_manifest.py | `0fea01d4d911a059` |
-| model/econ_sim.py | `879485b31c7fc5a0` |
+| model/econ_sim.py | `0879f097984198c0` |
 | model/figures.py | `369609e969c9154a` |
 | model/fuzz.py | `4f1e47e68c2212d3` |
 | model/fuzz_oracle.py | `4d286d579088865a` |
 | model/model.py | `4bc52861ade96d2f` |
 | model/mutants.py | `24d99685eedff217` |
-| model/pilot_sweep.py | `fedbe2706b9613eb` |
+| model/pilot_sweep.py | `0c455b594abe902b` |
 | model/results/beta_pilot_compare.jsonl | `fa07685fba612226` |
-| model/results/figures.json | `1131b2311c644efd` |
-| model/results/pilot_seeds.jsonl | `93d76cc221a27b03` |
-| model/results/pilot_summary.jsonl | `3490a40155f0a8b5` |
+| model/results/figures.json | `9f2e9bb3fea7efe8` |
+| model/results/pilot_seeds.jsonl | `c2a43f83c43d0b34` |
+| model/results/pilot_summary.jsonl | `2f2123cc4634717f` |
 | model/spec_check.py | `3f5c48a3f3479574` |
 | model/study_figures.py | `b48e908d52ad4f07` |
-| model/test_econ_sim.py | `4e0aa5314c0d81a3` |
+| model/test_econ_sim.py | `2524e340610edd23` |
 | model/test_scenarios.py | `9af43ce898e4b3c1` |
 
 ### Submodules, at the commit this release pins
@@ -128,7 +128,7 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | figures | `python3 check_figures.py` | Python 3.12 | every figure quoted below matches the run that produced it |
 | differential vectors | `python3 contracts/script/export_vectors.py model` | Python 3.12 | <!-- fig:contracts.vectors_total -->1,292<!-- /fig --> vectors, identical to the shipped file; <!-- fig:contracts.vectors_stepB_beyond_256_bit_product -->64<!-- /fig --> of them exercise step B where `debt × rate` exceeds 256 bits |
 | redemption queue vectors | the same command | Python 3.12 | <!-- fig:contracts.list_vector_operations -->561<!-- /fig --> list operations (insertions, removals, rate changes) taken from a run of the model's branch, and <!-- fig:contracts.list_vector_queues_checked -->485<!-- /fig --> whole queues in the model's order, <!-- fig:contracts.list_vector_queues_with_ties -->449<!-- /fig --> of them holding tied rates, up to <!-- fig:contracts.list_vector_max_size -->80<!-- /fig --> Troves; `RateSortedList` reproduces every queue whether its hints are exact, empty, reversed, stale or arbitrary |
-| branch trace | the same command | Python 3.12 | <!-- fig:contracts.branch_trace_steps -->700<!-- /fig --> steps of the model's branch, <!-- fig:contracts.branch_trace_accepted -->411<!-- /fig --> accepted and <!-- fig:contracts.branch_trace_refused -->289<!-- /fig --> refused, over <!-- fig:contracts.branch_trace_troves -->31<!-- /fig --> Troves, with <!-- fig:contracts.branch_trace_liquidations -->22<!-- /fig --> liquidations (<!-- fig:contracts.branch_trace_liquidations_offset -->14<!-- /fig --> against the Stability Pool, <!-- fig:contracts.branch_trace_liquidations_redistributed -->15<!-- /fig --> redistributed, some both) and <!-- fig:contracts.branch_trace_redemptions -->27<!-- /fig --> redemptions (<!-- fig:contracts.branch_trace_redeemed_to_zero -->13<!-- /fig --> Troves redeemed to zero, <!-- fig:contracts.branch_trace_tracked_zombies -->5<!-- /fig --> left under the minimum as the tracked Zombie, <!-- fig:contracts.branch_trace_zombies_back_through_adjust -->4<!-- /fig --> Zombies back in the queue through `adjustTrove`), ending shut down; every Trove and the queue compared in full <!-- fig:contracts.branch_trace_full_checks -->28<!-- /fig --> times; `BranchManager` and `CollateralRegistry` accept and refuse the same operations and match every recorded number, the base rate and the tracked Zombie included |
+| branch trace | the same command | Python 3.12 | <!-- fig:contracts.branch_trace_steps -->700<!-- /fig --> steps of the model's branch, <!-- fig:contracts.branch_trace_accepted -->423<!-- /fig --> accepted and <!-- fig:contracts.branch_trace_refused -->277<!-- /fig --> refused, over <!-- fig:contracts.branch_trace_troves -->29<!-- /fig --> Troves, with <!-- fig:contracts.branch_trace_liquidations -->25<!-- /fig --> liquidations (<!-- fig:contracts.branch_trace_liquidations_offset -->16<!-- /fig --> against the Stability Pool, <!-- fig:contracts.branch_trace_liquidations_redistributed -->18<!-- /fig --> redistributed, some both) and <!-- fig:contracts.branch_trace_redemptions -->28<!-- /fig --> redemptions (<!-- fig:contracts.branch_trace_redeemed_to_zero -->7<!-- /fig --> Troves redeemed to zero, <!-- fig:contracts.branch_trace_tracked_zombies -->5<!-- /fig --> left under the minimum as the tracked Zombie, <!-- fig:contracts.branch_trace_zombies_back_through_adjust -->4<!-- /fig --> Zombies back in the queue through `adjustTrove`), ending shut down; every Trove and the queue compared in full <!-- fig:contracts.branch_trace_full_checks -->28<!-- /fig --> times; `BranchManager` and `CollateralRegistry` accept and refuse the same operations and match every recorded number, the base rate and the tracked Zombie included |
 | routing trace | the same command | Python 3.12 | <!-- fig:contracts.routing_trace_steps -->400<!-- /fig --> steps of a model system with three branches, <!-- fig:contracts.routing_trace_redemptions -->54<!-- /fig --> redemptions, <!-- fig:contracts.routing_trace_truncated -->4<!-- /fig --> of them truncated to the uncovered debt and <!-- fig:contracts.routing_trace_by_debt -->3<!-- /fig --> split by debt because no redeemable branch had any uncovered; branches excluded for a price that is not Valid, for TCR under SCR and after a shutdown; `CollateralRegistry` and the three branches match every recorded number |
 | settlement traces | the same command | Python 3.12 | four runs of the model's branch through a shutdown and its whole settlement (an oracle failure with write-offs and late settlements, surplus absorbing the shortfall, a haircut for the holders, an empty pot), <!-- fig:contracts.settle_trace_steps -->611<!-- /fig --> steps in all: <!-- fig:contracts.settle_trace_settled -->49<!-- /fig --> Troves settled in time, <!-- fig:contracts.settle_trace_write_offs -->33<!-- /fig --> written off, <!-- fig:contracts.settle_trace_late_settlements -->30<!-- /fig --> settled late, <!-- fig:contracts.settle_trace_under_water -->29<!-- /fig --> under water at the reference price, <!-- fig:contracts.settle_trace_claims -->75<!-- /fig --> claims on the pot; `BranchSettlement` and the branch match every recorded number of the ledger, the settlement accounts and every account |
 | staking trace | the same command | Python 3.12 | <!-- fig:contracts.staking_trace_steps -->408<!-- /fig --> steps of the model's DARLI staking and revenue routing: stakes, unstakes, claims, hand-overs from one wei up, a week with nobody staked, <!-- fig:contracts.staking_trace_exact_boundaries -->14<!-- /fig --> warps to an exact epoch boundary and <!-- fig:contracts.staking_trace_multi_epoch_warps -->10<!-- /fig --> across several epochs; `DarliStaking`, `RevenueRouter` and the escrow match every recorded number, and the staking contract holds what it owes at every step |
@@ -200,17 +200,17 @@ NOT modelled: real gas; a Trove whose settlement reverts because of a contract b
 zero-debt Trove, pending redistribution, last-Trove dust, market price different from the reference price.
 Rates in the two-Trove example (Troves ~120% and ~60%): **<!-- fig:scenarios.holders_rate_absorb -->0.8991<!-- /fig --> for both holders** with borrowers absorbing, **<!-- fig:scenarios.holders_rate_parity -->0.7997<!-- /fig --> for both** with vault parity.
 
-### `python3 pilot_sweep.py <first> <last> 20` — the proposed pilot, staged settlement, healthy borrowers absorb first
+### `python3 pilot_sweep.py <first> <last> 20` — the proposed pilot (beta = 1), staged settlement, healthy borrowers absorb first
 <!-- fig:studies.pilot_table_results -->
 
 | case | shutdowns / 20 | min economic backing mean / median / worst | holders' recovery mean / median / worst run | worst account | best minus worst account (max over runs) | balances losing >=1%: mean / worst run | borrowers' surplus kept (mean, USD) | SP result mean / worst | LP settlement % mean / worst |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| pilot, calm + 10% dump | 0 | 1.77 / 1.82 / 1.23 | 1.000 / 1.000 / 1.000 | 1.00 | 0.000000 | 0% / 0% | 0 | +360 / +0 | +0.8 / +0.5 |
-| ETH -40% in 24h, network up | 3 | 1.38 / 1.35 / 1.04 | 0.997 / 1.000 / 0.972 | 0.97 | 0.000000 | 15% / 100% | 575 | +1306 / +0 | +0.6 / -0.8 |
-| ETH -40%, feed dead 12h, network up | 3 | 1.38 / 1.35 / 1.04 | 0.996 / 1.000 / 0.965 | 0.96 | 0.000000 | 15% / 100% | 560 | +1281 / +0 | +0.6 / -1.6 |
-| ETH -40% during 12h sequencer outage | 3 | 1.39 / 1.34 / 1.04 | 0.996 / 1.000 / 0.965 | 0.96 | 0.000000 | 15% / 100% | 538 | +1218 / +0 | +0.6 / -1.6 |
-| ETH -60% in 24h, network up | 13 | 1.12 / 1.09 / 1.03 | 1.000 / 1.000 / 0.951 | 0.95 | 0.000000 | 40% / 100% | 2,085 | +2079 / +175 | +0.2 / -2.6 |
-| ETH -60% during 24h sequencer outage | 13 | 0.99 / 1.03 / 0.57 | 0.922 / 0.999 / 0.566 | 0.57 | 0.000000 | 35% / 100% | 1,299 | -2404 / -14012 | -4.3 / -23.2 |
+| pilot, calm + 10% dump | 0 | 1.76 / 1.78 / 1.25 | 1.000 / 1.000 / 1.000 | 1.00 | 0.000000 | 0% / 0% | 0 | +454 / +0 | +1.2 / +0.9 |
+| ETH -40% in 24h, network up | 3 | 1.39 / 1.37 / 1.07 | 0.997 / 1.000 / 0.971 | 0.97 | 0.000000 | 10% / 100% | 845 | +1716 / +0 | +1.1 / -0.8 |
+| ETH -40%, feed dead 12h, network up | 3 | 1.39 / 1.37 / 1.06 | 0.997 / 1.000 / 0.971 | 0.97 | 0.000000 | 10% / 100% | 807 | +1633 / +0 | +1.1 / -0.8 |
+| ETH -40% during 12h sequencer outage | 3 | 1.39 / 1.34 / 1.06 | 0.997 / 1.000 / 0.971 | 0.97 | 0.000000 | 10% / 100% | 769 | +1611 / +0 | +1.0 / -0.8 |
+| ETH -60% in 24h, network up | 12 | 1.13 / 1.08 / 1.02 | 0.982 / 0.993 / 0.950 | 0.95 | 0.000000 | 50% / 100% | 3,357 | +2900 / +294 | +0.1 / -2.8 |
+| ETH -60% during 24h sequencer outage | 12 | 0.99 / 1.01 / 0.60 | 0.931 / 0.997 / 0.643 | 0.64 | 0.000000 | 35% / 100% | 1,001 | -2621 / -14987 | -2.7 / -18.5 |
 
 <!-- /fig -->
 

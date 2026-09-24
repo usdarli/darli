@@ -61,10 +61,10 @@ struct SystemParams {
     string name;
     string symbol;
     uint256 frontendShare;
-    uint256 betaWad; // SPEC 13 item 1: open
+    uint256 betaWad; // SPEC 2: 1 for the pilot
     uint256 initialBaseRate;
-    address darliRecipient; // SPEC 13 item 4: open
-    uint256 darliSupply; // SPEC 13 item 4: open
+    address darliRecipient; // SPEC 13: DARLI supply and distribution, open
+    uint256 darliSupply; // SPEC 13: DARLI supply and distribution, open
     IPoolManagerInit poolManager;
     address quote; // SPEC 2: USDC
     uint8 quoteDecimals;
@@ -306,10 +306,10 @@ contract DeployDarli is Script, DarliSystemBuild {
         p.name = "USDarli";
         p.symbol = "USDarli";
         p.frontendShare = 3 * PCT; // SPEC 2
-        p.betaWad = vm.envUint("DARLI_BETA_WAD"); // open: SPEC 13 item 1
+        p.betaWad = 1e18; // SPEC 2: β = 1 for the pilot
         p.initialBaseRate = vm.envUint("DARLI_INITIAL_BASE_RATE"); // R6: 10 % for the pilot, 100 % uncapped
-        p.darliRecipient = vm.envAddress("DARLI_RECIPIENT"); // open: SPEC 13 item 4
-        p.darliSupply = vm.envUint("DARLI_SUPPLY"); // open: SPEC 13 item 4
+        p.darliRecipient = vm.envAddress("DARLI_RECIPIENT"); // open: SPEC 13, DARLI distribution
+        p.darliSupply = vm.envUint("DARLI_SUPPLY"); // open: SPEC 13, DARLI supply
         // SPEC 2: the canonical pool and the vault, on Base (addresses checked on a fork: contracts/fork)
         p.poolManager = IPoolManagerInit(0x498581fF718922c3f8e6A244956aF099B2652b2b); // Uniswap v4 PoolManager
         p.quote = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913; // USDC, native
@@ -320,7 +320,7 @@ contract DeployDarli is Script, DarliSystemBuild {
         p.branches = new BranchParams[](1);
         p.branches[0] = BranchParams({
             collToken: IERC20(0x4200000000000000000000000000000000000006), // WETH on Base
-            feed: IPriceFeed(vm.envAddress("WETH_FEED")), // a SingleSourcePriceFeed built with SPEC 13 item 3 fixed
+            feed: IPriceFeed(vm.envAddress("WETH_FEED")), // a SingleSourcePriceFeed, its stipend and thresholds open (SPEC 13)
             mcr: 110 * PCT,
             ccr: 150 * PCT,
             scr: 110 * PCT,
@@ -329,7 +329,7 @@ contract DeployDarli is Script, DarliSystemBuild {
             maxRate: 250 * PCT,
             cap0: vm.envUint("DEBT_CAP0"), // SPEC 2: 125,000 for the pilot
             capCeiling: vm.envUint("DEBT_CAP_CEILING"), // SPEC 2: 250,000 for the pilot
-            gasDeposit: vm.envUint("GAS_DEPOSIT"), // open: SPEC 13 item 2
+            gasDeposit: vm.envUint("GAS_DEPOSIT"), // open: SPEC 13, gas deposit amount
             spShare: 72 * PCT,
             penSp: 5 * PCT,
             penRedist: 10 * PCT,

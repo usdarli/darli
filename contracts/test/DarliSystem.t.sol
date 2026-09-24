@@ -46,7 +46,7 @@ contract DarliSystemTest is Test, DarliSystemBuild {
             maxRate: 250 * PCT,
             cap0: 125_000 * E, // SPEC 2, pilot
             capCeiling: 250_000 * E,
-            gasDeposit: E / 1000, // SPEC 13 item 2 is open: a placeholder for the test
+            gasDeposit: E / 1000, // the amount is open (SPEC 13): a placeholder for the test
             spShare: 72 * PCT,
             penSp: 5 * PCT,
             penRedist: 10 * PCT,
@@ -68,9 +68,9 @@ contract DarliSystemTest is Test, DarliSystemBuild {
         p.name = "USDarli";
         p.symbol = "USDarli";
         p.frontendShare = 3 * PCT;
-        p.betaWad = 4 * E; // SPEC 13 item 1 is open: the pilot simulations' value
+        p.betaWad = E; // SPEC 2: β = 1
         p.initialBaseRate = 10 * PCT;
-        p.darliRecipient = address(this); // SPEC 13 item 4 is open: placeholders
+        p.darliRecipient = address(this); // DARLI supply and distribution are open (SPEC 13): placeholders
         p.darliSupply = 1_000_000 * E;
         p.poolManager = pm;
         p.quote = address(quote);

@@ -45,7 +45,7 @@ TROVE_STATUS = {ACTIVE: 1, ZOMBIE: 2, CLOSED_OWNER: 3, CLOSED_LIQ: 4, CLOSED_SET
 NAMES = [f"u{i}" for i in range(N_USERS)] + ["fe1", "fe2"]
 
 # the system's redemption fee parameters: β is open (SPEC 0), 4 as in the pilot simulations; the pilot's base rate (R6)
-SYSTEM = dict(beta=4, initial_base_rate=10 * PCT)
+SYSTEM = dict(beta=1, initial_base_rate=10 * PCT)
 CONFIG = dict(mcr=110 * PCT, ccr=150 * PCT, scr=110 * PCT, pen_sp=5 * PCT, pen_redist=10 * PCT, min_debt=2000 * E,
               debt_cap=400_000 * E, cap_ceiling=1_600_000 * E, gas_deposit=E // 1000)
 FUNDING = 1_000 * E                      # collateral minted to each user at the start
@@ -152,6 +152,8 @@ def build(rng):
         elif feed.status == VALID and b.shutdown_at == 0 and rng.random() < 0.5 and \
                 any(b.debt_now(t) and b.icr(t, feed.price) < b.mcr for t in live):
             k = "liquidate"                                  # a Trove is below MCR: liquidation is what needs exercising
+        if step in (SHUTDOWN_FROM, SHUTDOWN_FROM + 50):
+            k = "trigger"                                    # scheduled, not left to the draw: the permissionless check (L6)
         if step == STEPS - 30:
             k = "fail"                                       # the oracle fails for good ...
         elif step == STEPS - 29:
@@ -443,7 +445,7 @@ def build(rng):
              "troves": [str(x) for x in troves], "trovesLen": [str(x) for x in troves_len],
              "queue": [str(x) for x in queues], "queueLen": [str(x) for x in queue_len],
              "full": [str(x) for x in full_flags],
-             "config": {"users": str(N_USERS), "funding": str(FUNDING), "price0": str(PRICE0), "start": str(START)}}
+             "config": {"users": str(N_USERS), "funding": str(FUNDING), "price0": str(PRICE0), "start": str(START), "betaWad": str(SYSTEM["beta"] * WAD), "initialBaseRate": str(SYSTEM["initial_base_rate"])}}
     stats = dict(full_checks=sum(full_flags), steps=STEPS, ok=sum(ok_by_kind.values()), refused=sum(bad_by_kind.values()), ok_by_kind=ok_by_kind,
                  bad_by_kind=bad_by_kind, shutdown=b.shutdown_at != 0, troves=len(b.troves), liquidations=liq,
                  redemptions=red)

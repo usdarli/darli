@@ -9,7 +9,7 @@ import json, statistics, sys
 from dataclasses import replace
 from econ_sim import Params, run
 
-PILOT = dict(pool_model="range", range_width=0.01, pool_usd=30_000, beta=4, initial_base_rate=0.10,
+PILOT = dict(pool_model="range", range_width=0.01, pool_usd=30_000, beta=1, initial_base_rate=0.10,
              min_debt=500, avg_trove=2_000, launch_debt=60_000,            # users' first-week borrowing
              team_collateral_usd=90_000, sp_seed=20_000,                   # team trove mints pool side + SP seed (~35k)
              cap_initial=125_000, cap_ceiling=250_000,              # built-in schedule: doubles by itself on day 30

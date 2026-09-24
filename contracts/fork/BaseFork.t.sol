@@ -66,7 +66,7 @@ contract BaseForkTest is Test, DarliSystemBuild {
     address constant SEQUENCER = 0xBCF85224fc0756B9Fa45aA7892530B47e10b6433;
     uint256 constant E = 1e18;
     uint256 constant PCT = 1e16;
-    uint256 constant FEED_GAS = 100_000; // a placeholder stipend: SPEC 13 item 3 fixes the real one
+    uint256 constant FEED_GAS = 100_000; // a placeholder stipend: open in SPEC 13
     uint160 constant Q96 = 2 ** 96;
 
     IPoolManager pm = IPoolManager(POOL_MANAGER);
@@ -81,7 +81,7 @@ contract BaseForkTest is Test, DarliSystemBuild {
         feed = new SingleSourcePriceFeed(
             IFeedSource(address(new ChainlinkSource(IAggregatorV3(ETH_USD)))),
             ISequencerGuard(address(new ChainlinkSequencerGuard(IAggregatorV3(SEQUENCER)))),
-            1 hours, // three heartbeats of the feed (20 minutes); SPEC 13 item 3 fixes the thresholds
+            1 hours, // three heartbeats of the feed (20 minutes); the thresholds are open in SPEC 13
             24 hours,
             1 hours,
             FEED_GAS,
@@ -90,7 +90,7 @@ contract BaseForkTest is Test, DarliSystemBuild {
         p.name = "USDarli";
         p.symbol = "USDarli";
         p.frontendShare = 3 * PCT;
-        p.betaWad = 4 * E; // placeholders for what SPEC 13 leaves open
+        p.betaWad = E; // SPEC 2: β = 1; what follows are placeholders for what SPEC 13 leaves open
         p.initialBaseRate = 10 * PCT;
         p.darliRecipient = address(this);
         p.darliSupply = 1_000_000 * E;

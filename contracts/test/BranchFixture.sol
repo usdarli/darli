@@ -46,7 +46,7 @@ abstract contract BranchFixture is Test {
 
     // the redemption fee parameters of the trace (`branch_trace.py`): β is open (SPEC §0), 4 as in the pilot simulations;
     // the pilot's initial base rate (R6)
-    uint256 constant BETA_WAD = 4 * E;
+    uint256 constant BETA_WAD = E; // SPEC 2: β = 1
     uint256 constant INITIAL_BASE_RATE = 10 * PCT;
 
     function deployBranch(uint256 minDebt, uint256 cap0, uint256 capCeiling, uint256 gasDeposit) internal {

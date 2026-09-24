@@ -60,7 +60,12 @@ contract CollateralRegistryTraceTest is Test {
             minters[i] = vm.computeCreateAddress(address(this), n + 1 + 8 * i + 7);
             predicted[i] = IBranchRedemption(minters[i]);
         }
-        collRegistry = new CollateralRegistry(IStableToken(address(stable)), predicted, 4 * E, 10 * PCT);
+        collRegistry = new CollateralRegistry(
+            IStableToken(address(stable)),
+            predicted,
+            vm.parseJsonUint(json, ".config.betaWad"),
+            vm.parseJsonUint(json, ".config.initialBaseRate")
+        );
         for (uint256 i = 0; i < N; i++) {
             _deployBranch(i, minters[i], prices[i]);
         }

@@ -23,7 +23,7 @@ script `spec_check.py` verifies that every `S-NN` named here exists and that eve
 | Settlement completion | Constant work per Trove, batches ≤ 50, the settler is paid the Trove's gas deposit; after 30 days a Trove may be written off; late recoveries reach every claim unit alike. | decided |
 | Deployment | One transaction: token, sealed minters, fixed revenue destination, canonical USDarli/USDC pool at par with no hook, vault bound to it. A pre-initialised pool is tolerated only if it demonstrably exists. | decided |
 | Oracle | One external ETH/USD feed per branch, fixed; sequencer guard; temporary states before a permanent failure; fixed gas stipend. The pool is never a price source. | decided |
-| β (redemption fee sensitivity) | **[open]**: 4 in the pilot simulations; two studies disagree. | decided |
+| β (redemption fee sensitivity) | **1** for the pilot: the fee's size term is the redeemed share of supply, no more (§5.2). | decided |
 | Minimum debt | 500 USDarli (proposed) | decided |
 | Collateral | ETH in the protocol's own vault. Not in any pool. | decided |
 
@@ -49,7 +49,7 @@ script `spec_check.py` verifies that every `S-NN` named here exists and that eve
 | Rate-change cooldown | 7 days | §4.3 |
 | Minimum debt | 500 (proposed) | §4.2 |
 | Canonical pool and liquidity vault | USDarli / USDC (native on Base), fee 0.01 %, tick spacing 1, no hook; the vault's range 100 ticks either side of par (about 1 %) | §10 |
-| Redemption fee floor / half-life / β / initial base-rate component | 0.5 % / 6 h / **[open]** (4 in simulations) / 10 % for the pilot | §5.2 |
+| Redemption fee floor / half-life / β / initial base-rate component | 0.5 % / 6 h / 1 / 10 % for the pilot | §5.2 |
 | Interest split (SP / stakers / interfaces) | 72 / 25 / 3 % | §8 |
 | Reward epoch | 7 days | §8.2 |
 | Debt cap schedule | `cap0` 125 000, ceiling 250 000 (pilot), period 30 days | §4.5 |
@@ -103,7 +103,7 @@ A Trove is an NFT with `coll`, `recordedDebt`, `annualRate`, `stake`, redistribu
 
 ### 5.2 Fee
 - **R5** `fee = min(WAD, floor + decayed_baseRate + requested × WAD² / (supply × β_wad))`, computed from the **requested** amount before redeeming; the **stored** `baseRate` is updated from the amount **actually** redeemed, with β sampled **once** per redemption. Decay: `baseRate × decay^minutes`, `decay = floor(0.5^(1/360) × 1e18) = 998076443575628738`, exponent capped at `MAX_DECAY_MINUTES`; the fee clock moves only when a whole minute has passed. The caller's `maxFeeRate` bounds the rate, inclusive. (S-14, S-15 (d), S-25, S-13 (b), M-6 base rate from the requested instead of the redeemed amount, Foundry differential vectors, `test_theFeeFollowsItsFormulaFromTheInitialBaseRateAndIsCapped`, `test_theBaseRateFollowsWhatWasRedeemedNotWhatWasAsked`, `test_theBaseRateDecaysWithASixHourHalfLifeCountedInWholeMinutes`, `test_diff_branchTraceMatchesModel`)
-- **R6** `INITIAL_BASE_RATE` is a constant: 100 % for an uncapped system; 10 % for the pilot (the cap already limits a run). **β is open** (§0). (Foundry `test_theFeeFollowsItsFormulaFromTheInitialBaseRateAndIsCapped`, `test_registryConstructionRefusesInconsistentParameters`)
+- **R6** `INITIAL_BASE_RATE` is a constant: 100 % for an uncapped system; 10 % for the pilot (the cap already limits a run). `β = 1` for the pilot (§0). (Foundry `test_theFeeFollowsItsFormulaFromTheInitialBaseRateAndIsCapped`, `test_registryConstructionRefusesInconsistentParameters`)
 - **R7** The fee stays in the redeemed Trove as collateral. (I-8, Foundry `test_debtIsConvertedAtTheRedemptionPriceAndTheFeeStaysInTheTrove`, `test_diff_branchTraceMatchesModel`)
 
 ## 6. Solvency (live branch)
@@ -258,4 +258,4 @@ not behaviour. The honest measure is how many of the mutants a random tester kil
 
 ## 13. Open items before implementation
 
-1. β. 2. Gas deposit amount. 3. Fixed values of `FEED_GAS_LIMIT` and oracle thresholds (the fork test measures the reads they must cover). 4. DARLI supply and distribution. 5. Persistent failure in shared settlement parts. 6. Legal review before any deployment.
+1. Gas deposit amount. 2. Fixed values of `FEED_GAS_LIMIT` and oracle thresholds (the fork test measures the reads they must cover). 3. DARLI supply and distribution. 4. Persistent failure in shared settlement parts. 5. Legal review before any deployment.

@@ -26,7 +26,7 @@ NAMES = [f"u{i}" for i in range(N_USERS)] + ["fe1", "fe2"]     # as in branch_tr
 OPS = ["open", "sp_dep", "sp_wd", "sp_claim", "liquidate", "price", "status", "poke", "trigger", "warp", "give",
        "settle", "settle_batch", "write_off", "redeem_bad", "repay_bad", "claim_late", "claim_surplus", "claim_liq_surplus"]
 TROVE_STATUS = {ACTIVE: 1, ZOMBIE: 2, CLOSED_OWNER: 3, CLOSED_LIQ: 4, CLOSED_SETTLED: 5}
-SYSTEM = dict(beta=4, initial_base_rate=10 * PCT)
+SYSTEM = dict(beta=1, initial_base_rate=10 * PCT)
 CONFIG = dict(mcr=110 * PCT, ccr=150 * PCT, scr=110 * PCT, pen_sp=5 * PCT, pen_redist=10 * PCT, min_debt=2000 * E,
               debt_cap=400_000 * E, cap_ceiling=1_600_000 * E, gas_deposit=E // 1000)
 FUNDING = 1_000 * E
@@ -291,7 +291,7 @@ def build(rng, variant):
     trace = {"ops": {k: [str(x) for x in v] for k, v in ops.items()}, "batch": [str(x) for x in batch],
              "batchLen": [str(x) for x in batch_len], "ledger": [str(x) for x in ledger], "ledgerLen": str(ledger_len),
              "troves": [str(x) for x in troves], "trovesLen": [str(x) for x in troves_len], "troveLen": str(TROVE_LEN),
-             "config": {"users": str(N_USERS), "funding": str(FUNDING), "start": str(START)}}
+             "config": {"users": str(N_USERS), "funding": str(FUNDING), "start": str(START), "betaWad": str(SYSTEM["beta"] * WAD), "initialBaseRate": str(SYSTEM["initial_base_rate"])}}
     st["keep_rose"] = int(keep_at_end_of_phase_one < b.surplus_keep)
     stats = dict(steps=len(ops["kind"]), ok=sum(ok_by_kind.values()), refused=sum(bad_by_kind.values()),
                  ok_by_kind=ok_by_kind, bad_by_kind=bad_by_kind, settlement=st, keep=b.surplus_keep)

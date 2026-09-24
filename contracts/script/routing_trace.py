@@ -25,7 +25,7 @@ FUNDING = 1_000 * E                      # collateral of each branch minted to e
 OPS = ["open", "sp_dep", "sp_wd", "price", "status", "warp", "redeem", "give", "trigger"]
 STATUS = {VALID: 0, NETWORK_UNSTABLE: 1, PRICE_INVALID: 2, FAILED: 3}
 TROVE_STATUS = {ACTIVE: 1, ZOMBIE: 2}
-SYSTEM = dict(beta=4, initial_base_rate=10 * PCT)   # as in branch_trace.py
+SYSTEM = dict(beta=1, initial_base_rate=10 * PCT)   # as in branch_trace.py
 CONFIG = dict(mcr=110 * PCT, ccr=150 * PCT, scr=110 * PCT, pen_sp=5 * PCT, pen_redist=10 * PCT, min_debt=2000 * E,
               debt_cap=10_000_000 * E, cap_ceiling=10_000_000 * E, gas_deposit=E // 1000)
 NAMES = [f"u{i}" for i in range(N_USERS)]
@@ -252,7 +252,7 @@ def build(rng):
              "ledgerLen": str(LEDGER_LEN), "troves": [str(x) for x in troves],
              "trovesLen": [str(x) for x in troves_len],
              "config": {"users": str(N_USERS), "funding": str(FUNDING), "start": str(START),
-                        "prices": [str(p) for p in PRICES0]}}
+                        "prices": [str(p) for p in PRICES0], "betaWad": str(SYSTEM["beta"] * WAD), "initialBaseRate": str(SYSTEM["initial_base_rate"])}}
     stats = dict(steps=STEPS, ok=sum(ok_by_kind.values()), refused=sum(bad_by_kind.values()), ok_by_kind=ok_by_kind,
                  bad_by_kind=bad_by_kind, routing=route)
     return trace, stats
