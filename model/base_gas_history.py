@@ -1,5 +1,5 @@
 """
-Base gas prices over a year, for the gas deposit of SPEC 13 item 1.   python3 base_gas_history.py
+Base gas prices over a year, for the gas deposit of SPEC 2.   python3 base_gas_history.py
 
 Every hour of the year before the fork tests' pinned block, `eth_feeHistory`: the base fee of each of the 1,024 blocks
 before it (about 34 minutes), and the 50th and 90th percentile priority fee of the last 20. Output: per hour the median and

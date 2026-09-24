@@ -97,18 +97,18 @@ contract BaseForkTest is Test, DarliSystemBuild {
     address constant SEQUENCER = 0xBCF85224fc0756B9Fa45aA7892530B47e10b6433;
     uint256 constant E = 1e18;
     uint256 constant PCT = 1e16;
-    uint256 constant FEED_GAS = 100_000; // a placeholder stipend: open in SPEC 13
+    uint256 constant FEED_GAS = 100_000; // SPEC 2, for the feed and for the sequencer guard
     uint160 constant Q96 = 2 ** 96;
-    // O7: WETH/stablecoin pools on Base with the v3 `observe` oracle (the pool set itself is open, SPEC 13)
+    // O7: WETH/stablecoin pools on Base with the v3 `observe` oracle; the set and its values are SPEC 2 constants
     address constant UNI_USDC_005 = 0xd0b53D9277642d899DF5C87A3966A349A798F224; // Uniswap v3, 0.05 %
     address constant UNI_USDC_03 = 0x6c561B446416E1A00E8E93E221854d6eA4171372; // Uniswap v3, 0.3 %
     address constant AERO_USDC = 0xb2cc224c1c9feE385f8ad6a55b4d94E92359DC59; // Aerodrome Slipstream, spacing 100
     address constant AERO_USDT = 0x9785eF59E2b499fB741674ecf6fAF912Df7b3C1b; // Aerodrome Slipstream, spacing 100
     address constant UNI_DAI_005 = 0x93e8542E6CA0eFFfb9D57a270b76712b968A38f5; // Uniswap v3, 0.05 %: a thin pool
     address constant DAI = 0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb;
-    uint32 constant WINDOW = 1800; // placeholders, open in SPEC 13
+    uint32 constant WINDOW = 600;
     uint256 constant POOL_STALENESS = 1 hours;
-    uint256 constant MIN_DEPTH = 1_000_000 * E;
+    uint256 constant MIN_DEPTH = 5_000_000 * E;
     uint256 constant POOL_CALL_GAS = 80_000;
     uint256 constant POOL_SOURCE_GAS = 600_000; // about twice a cold read of the four pools; it sets the least gas limit of every price read
     uint256 constant MAX_DEVIATION = 5 * PCT;
@@ -125,7 +125,7 @@ contract BaseForkTest is Test, DarliSystemBuild {
         feed = new SingleSourcePriceFeed(
             IFeedSource(address(new ChainlinkSource(IAggregatorV3(ETH_USD)))),
             ISequencerGuard(address(new ChainlinkSequencerGuard(IAggregatorV3(SEQUENCER)))),
-            1 hours, // three heartbeats of the feed (20 minutes); the thresholds are open in SPEC 13
+            1 hours, // SPEC 2: three heartbeats of the feed (20 minutes)
             24 hours,
             1 hours,
             FEED_GAS,
@@ -134,7 +134,7 @@ contract BaseForkTest is Test, DarliSystemBuild {
         p.name = "USDarli";
         p.symbol = "USDarli";
         p.frontendShare = 3 * PCT;
-        p.betaWad = E; // SPEC 2: β = 1; what follows are placeholders for what SPEC 13 leaves open
+        p.betaWad = E; // SPEC 2: β = 1; DARLI supply and recipient below are placeholders (SPEC 13)
         p.initialBaseRate = 10 * PCT;
         p.darliRecipient = address(this);
         p.darliSupply = 1_000_000 * E;
@@ -278,7 +278,7 @@ contract BaseForkTest is Test, DarliSystemBuild {
         console2.log("gas of one cold read of the four-pool source:", used);
         assertLt(used, POOL_SOURCE_GAS, "O5: the stipend covers a cold read of every pool");
         (uint256 feedPrice,) = feed.fetchPrice();
-        console2.log("pool source (weighted median, 30 min):", pools);
+        console2.log("pool source (weighted median over the window):", pools);
         console2.log("Chainlink ETH/USD:", feedPrice);
         assertApproxEqRel(pools, feedPrice, 1e16, "O7: the pools' price agrees with the feed within 1 %");
         for (uint256 i = 0; i < p.length; i++) {

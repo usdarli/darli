@@ -1,5 +1,5 @@
 """
-The oracle thresholds of SPEC O7/O8 against a year of Base history (SPEC 13 item 2).   python3 oracle_history.py
+The oracle thresholds of SPEC O7/O8 against a year of Base history (their SPEC 2 values).   python3 oracle_history.py
 
 For many past blocks it reads what the two-source feed would have read -- the Chainlink ETH/USD answer and, from the four
 pools of the fork test, the pool source's weighted median for windows of 5, 10 and 30 minutes -- and records how far the

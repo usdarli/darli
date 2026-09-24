@@ -140,7 +140,7 @@ contract OracleTraceTest is Test {
     }
 
     /// Crafted: equal weights in shuffled order and exact half splits, where the order and the tie rule decide.
-    function _medians(PoolTwapMathHarness h, string memory json) internal view {
+    function _medians(PoolTwapMathHarness h, string memory json) internal pure {
         uint256[] memory prices = vm.parseJsonUintArray(json, ".medians.prices");
         uint256[] memory weights = vm.parseJsonUintArray(json, ".medians.weights");
         uint256[] memory count = vm.parseJsonUintArray(json, ".medians.count");
@@ -162,7 +162,7 @@ contract OracleTraceTest is Test {
         uint256[] memory qp,
         uint256[] memory qw,
         bool[] memory qok
-    ) internal view {
+    ) internal pure {
         uint256[] memory idx = vm.parseJsonUintArray(json, ".combos.idx");
         uint256[] memory count = vm.parseJsonUintArray(json, ".combos.count");
         uint256[] memory minDepth = vm.parseJsonUintArray(json, ".combos.minDepth");

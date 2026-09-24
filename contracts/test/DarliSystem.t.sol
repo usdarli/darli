@@ -46,7 +46,7 @@ contract DarliSystemTest is Test, DarliSystemBuild {
             maxRate: 250 * PCT,
             cap0: 125_000 * E, // SPEC 2, pilot
             capCeiling: 250_000 * E,
-            gasDeposit: E / 1000, // the amount is open (SPEC 13): a placeholder for the test
+            gasDeposit: E / 1000, // SPEC 2: 0.001 ETH
             spShare: 72 * PCT,
             penSp: 5 * PCT,
             penRedist: 10 * PCT,

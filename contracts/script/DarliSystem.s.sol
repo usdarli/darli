@@ -320,7 +320,7 @@ contract DeployDarli is Script, DarliSystemBuild {
         p.branches = new BranchParams[](1);
         p.branches[0] = BranchParams({
             collToken: IERC20(0x4200000000000000000000000000000000000006), // WETH on Base
-            feed: IPriceFeed(vm.envAddress("WETH_FEED")), // a DualSourcePriceFeed (O8); stipends, thresholds, pools open (SPEC 13)
+            feed: IPriceFeed(vm.envAddress("WETH_FEED")), // the DualSourcePriceFeed of script/DeployFeed.s.sol
             mcr: 110 * PCT,
             ccr: 150 * PCT,
             scr: 110 * PCT,
@@ -329,7 +329,7 @@ contract DeployDarli is Script, DarliSystemBuild {
             maxRate: 250 * PCT,
             cap0: vm.envUint("DEBT_CAP0"), // SPEC 2: 125,000 for the pilot
             capCeiling: vm.envUint("DEBT_CAP_CEILING"), // SPEC 2: 250,000 for the pilot
-            gasDeposit: vm.envUint("GAS_DEPOSIT"), // open: SPEC 13, gas deposit amount
+            gasDeposit: 1e15, // SPEC 2: 0.001 ETH
             spShare: 72 * PCT,
             penSp: 5 * PCT,
             penRedist: 10 * PCT,
