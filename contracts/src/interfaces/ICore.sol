@@ -34,9 +34,19 @@ interface IInterestEscrow {
     function pull(uint256 amount) external;
 }
 
+/// SPEC V3: the escrow's balance to the staking contract fixed at construction; permissionless, no destination.
 interface IInterestRouter {
-    /// @notice permissionless: step A on every branch of the system, then split the escrow.
-    function syncAndDistribute() external;
+    function routeRevenue() external returns (uint256 amount);
+}
+
+/// SPEC V4, V5.
+interface IDarliStaking {
+    function stake(uint256 amount) external;
+    function unstake(uint256 amount) external;
+    function claim() external returns (uint256);
+    /// @notice only the router, after transferring `amount`: queued for the next epoch.
+    function notifyReward(uint256 amount) external;
+    function earnedOf(address who) external view returns (uint256);
 }
 
 /// SPEC V1, V2. Shared by every branch of a system; a caller counts as a branch exactly when it is a minter of the stablecoin.
@@ -61,11 +71,6 @@ interface ITroveNFT {
     function ownerOf(uint256 troveId) external view returns (address);
     /// @notice the owner, or an address the owner approved for this Trove or for all of its Troves.
     function isOwnerOrApproved(address account, uint256 troveId) external view returns (bool);
-}
-
-interface IInitiative {
-    /// @notice tokens are already transferred; called with a guaranteed gas stipend inside one atomic self-call.
-    function notifyReward(uint256 amount) external;
 }
 
 /// The redemption queue of one branch (SPEC R2): Active Troves in a doubly linked list, head = highest (rate, id), tail =

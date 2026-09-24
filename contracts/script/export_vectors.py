@@ -214,6 +214,12 @@ for i, variant in enumerate(settle_trace.VARIANTS):
     strace, sstats[variant] = settle_trace.build(random.Random(20260927 + i), variant)
     (Path(__file__).resolve().parent.parent / "test" / "vectors" / f"settle_trace_{variant}.json").write_text(json.dumps(strace))
 
+# --- DARLI staking and revenue routing (SPEC V3-V5): see staking_trace.py ----------------------------------------------- #
+import staking_trace  # noqa: E402
+
+ktrace, kstats = staking_trace.build(random.Random(20260930))
+(Path(__file__).resolve().parent.parent / "test" / "vectors" / "staking_trace.json").write_text(json.dumps(ktrace))
+
 # --- the Stability Pool on its own (SPEC SP2, SP4): see sp_trace.py ---------------------------------------------------- #
 import sp_trace  # noqa: E402
 
@@ -265,6 +271,9 @@ fig("settle_trace_write_offs", sum(x["settlement"]["write_offs"] for x in sstats
 fig("settle_trace_late_settlements", sum(x["settlement"]["late"] for x in sstats.values()))
 fig("settle_trace_claims", sum(x["settlement"]["claims"] for x in sstats.values()))
 fig("settle_trace_under_water", sum(x["settlement"]["under_water"] for x in sstats.values()))
+fig("staking_trace_steps", kstats["steps"])
+fig("staking_trace_exact_boundaries", kstats["exact_boundaries"])
+fig("staking_trace_multi_epoch_warps", kstats["multi_epoch_warps"])
 dump("contracts")
 print(f"wrote {out} ({len(dp['out'])} decPow, {len(ia['out'])} stepA, {len(ib['out'])} stepB vectors, "
       f"{overflowing} of them beyond where debt * rate fits in 256 bits)")
@@ -280,5 +289,7 @@ print(f"wrote {outr} ({rstats['steps']} steps: {rstats['ok']} accepted, {rstats[
       f"{rstats['ok_by_kind']['redeem']} redemptions, routing {rstats['routing']})")
 for variant, x in sstats.items():
     print(f"wrote settle_trace_{variant}.json ({x['steps']} steps: {x['ok']} accepted, {x['refused']} refused; {x['settlement']})")
+print(f"wrote staking_trace.json ({kstats['steps']} steps: {kstats['ok']} accepted, {kstats['refused']} refused; "
+      f"{kstats['exact_boundaries']} warps to an exact epoch boundary, {kstats['multi_epoch_warps']} across several epochs)")
 print(f"wrote {outl} ({n_ins} inserts, {n_rem} removals, {n_re} reinsertions; {len(checks['len'])} queues checked, "
       f"{ties} with tied rates, up to {max_size} Troves)")
