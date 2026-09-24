@@ -2,7 +2,7 @@
 
 An immutable, ETH-backed stablecoin protocol for Base: borrowers set their own interest rate, a Stability Pool settles liquidations without market sales, a revenue-sharing token with no vote, and a staged, order-free settlement after shutdown.
 
-**Status: research pre-release 0.0.1 — specification, reference model and a partial Solidity implementation. Nothing is deployed or audited; the liquidity vault and the deployment of the whole system in one transaction are not written. This repository is not an offer of any token or financial product.**
+**Status: research pre-release 0.0.1 — specification, reference model and a partial Solidity implementation. Nothing is deployed or audited; the liquidity vault is not written. This repository is not an offer of any token or financial product.**
 
 | | |
 | --- | --- |
@@ -12,7 +12,7 @@ An immutable, ETH-backed stablecoin protocol for Base: borrowers set their own i
 | `model/` | Executable reference model (Python, standard library only, exact integer arithmetic): scenarios, two fuzzers with asserted coverage floors, mutants that the tests must kill, an agent-based simulator |
 | `RELEASING.md` | Release checklist: what must be green, enabled and decided before a version is announced |
 | `AGENTS.md` | Operating rules for AI coding agents and contributors: what must never change, how a rule change is made, what looks like a bug but is not |
-| `contracts/` | Solidity (Foundry): math libraries checked bit-for-bit against the model, the stablecoin, the oracle adapter, the one-shot deployer, the live branch -- borrowing, the redemption queue, the Stability Pool, liquidation and redistribution, redemption and its routing across branches -- the settlement after a shutdown, a contract of its own, and the revenue router and DARLI staking, all replayed against model-driven traces wei for wei. The branch contract is within a few hundred bytes of the 24 KB limit |
+| `contracts/` | Solidity (Foundry): math libraries checked bit-for-bit against the model, the stablecoin, the oracle adapter, the one-shot deployer, the live branch -- borrowing, the redemption queue, the Stability Pool, liquidation and redistribution, redemption and its routing across branches -- the settlement after a shutdown, a contract of its own, and the revenue router and DARLI staking, all replayed against model-driven traces wei for wei; and the build of a whole system at predicted addresses, checked link by link before it is sealed (`script/DarliSystem.s.sol`), with an end-to-end test of its life. The branch contract is within a few hundred bytes of the 24 KB limit |
 
 ## What Darli is
 

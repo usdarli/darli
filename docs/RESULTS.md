@@ -13,6 +13,7 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | --- | --- |
 | contracts/foundry.toml | `f7e31bb8013021b6` |
 | contracts/remappings.txt | `79f11452d3ebfaa9` |
+| contracts/script/DarliSystem.s.sol | `bbd7488b081f17fb` |
 | contracts/script/branch_trace.py | `d95106de8ba564cb` |
 | contracts/script/check_test_count.py | `fce577ae0f91f146` |
 | contracts/script/export_vectors.py | `bde7a8b227cf4232` |
@@ -51,8 +52,9 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | contracts/test/BranchManager.trace.t.sol | `9e3687fa61ebd1e9` |
 | contracts/test/BranchSettlement.trace.t.sol | `0b1e9d0b2dc36d14` |
 | contracts/test/CollateralRegistry.trace.t.sol | `b84159968dbe0924` |
-| contracts/test/DarliDeployer.t.sol | `e66c64db9c3d2fd4` |
+| contracts/test/DarliDeployer.t.sol | `80687e3ede7e8e5c` |
 | contracts/test/DarliStaking.trace.t.sol | `fc6ef201f9d70b7a` |
+| contracts/test/DarliSystem.t.sol | `48c01d94ccbc7078` |
 | contracts/test/FixedPointMath.t.sol | `8727fe555bb91e53` |
 | contracts/test/Liquidation.t.sol | `98c49a26b1b94709` |
 | contracts/test/OracleFeed.t.sol | `50d9e9cabb388194` |
@@ -65,6 +67,7 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | contracts/test/StableToken.t.sol | `049ab75f2a809d16` |
 | contracts/test/mocks/BranchMocks.sol | `dcc3313ca6048a53` |
 | contracts/test/mocks/OracleMocks.sol | `1edf7f875d9e124d` |
+| contracts/test/mocks/PoolMocks.sol | `1551dd98393e5ddf` |
 | contracts/test/vectors/branch_trace.json | `ec1cd8f258370056` |
 | contracts/test/vectors/math.json | `ee94c997bb9c3d9e` |
 | contracts/test/vectors/routing_trace.json | `2c764725c5720116` |
@@ -75,10 +78,10 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | contracts/test/vectors/sorted_list.json | `aee5b22cb952dcd8` |
 | contracts/test/vectors/stability_pool.json | `10988275992dda22` |
 | contracts/test/vectors/staking_trace.json | `46d5ccd5f5b8bf6c` |
-| docs/SPEC.md | `63c2f359f00e32e6` |
+| docs/SPEC.md | `17f2b9d3664f0245` |
 | model/beta_pilot_compare.py | `64251462b830a798` |
 | model/check_figures.py | `a020fc9d36346070` |
-| model/check_manifest.py | `14c03d6c403bcf14` |
+| model/check_manifest.py | `1bbb897e78db426b` |
 | model/econ_sim.py | `879485b31c7fc5a0` |
 | model/figures.py | `369609e969c9154a` |
 | model/fuzz.py | `4f1e47e68c2212d3` |
@@ -87,7 +90,7 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | model/mutants.py | `24d99685eedff217` |
 | model/pilot_sweep.py | `fedbe2706b9613eb` |
 | model/results/beta_pilot_compare.jsonl | `fa07685fba612226` |
-| model/results/figures.json | `cadbe1499300f8a8` |
+| model/results/figures.json | `1a3bec1c3a55bbba` |
 | model/results/pilot_seeds.jsonl | `93d76cc221a27b03` |
 | model/results/pilot_summary.jsonl | `3490a40155f0a8b5` |
 | model/spec_check.py | `35cc0cb81d8679d8` |
@@ -121,7 +124,7 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | settlement traces | the same command | Python 3.12 | four runs of the model's branch through a shutdown and its whole settlement (an oracle failure with write-offs and late settlements, surplus absorbing the shortfall, a haircut for the holders, an empty pot), <!-- fig:contracts.settle_trace_steps -->611<!-- /fig --> steps in all: <!-- fig:contracts.settle_trace_settled -->49<!-- /fig --> Troves settled in time, <!-- fig:contracts.settle_trace_write_offs -->33<!-- /fig --> written off, <!-- fig:contracts.settle_trace_late_settlements -->30<!-- /fig --> settled late, <!-- fig:contracts.settle_trace_under_water -->29<!-- /fig --> under water at the reference price, <!-- fig:contracts.settle_trace_claims -->75<!-- /fig --> claims on the pot; `BranchSettlement` and the branch match every recorded number of the ledger, the settlement accounts and every account |
 | staking trace | the same command | Python 3.12 | <!-- fig:contracts.staking_trace_steps -->408<!-- /fig --> steps of the model's DARLI staking and revenue routing: stakes, unstakes, claims, hand-overs from one wei up, a week with nobody staked, <!-- fig:contracts.staking_trace_exact_boundaries -->14<!-- /fig --> warps to an exact epoch boundary and <!-- fig:contracts.staking_trace_multi_epoch_warps -->10<!-- /fig --> across several epochs; `DarliStaking`, `RevenueRouter` and the escrow match every recorded number, and the staking contract holds what it owes at every step |
 | Stability Pool vectors | the same command | Python 3.12 | <!-- fig:contracts.sp_trace_steps -->400<!-- /fig --> operations on the model's pool; <!-- fig:contracts.sp_trace_rescaling_offsets -->32<!-- /fig --> offsets rescaled P, <!-- fig:contracts.sp_trace_multi_rescale_offsets -->4<!-- /fig --> of them more than once, up to scale <!-- fig:contracts.sp_trace_max_scale -->36<!-- /fig -->; `StabilityPool` matches every value of the pool and of every depositor |
-| Solidity | `forge test` | forge 1.5.1-stable, solc 0.8.26 | <!-- fig:contracts.declared_tests -->117<!-- /fig --> passed, 0 failed; `check_test_count.py` confirms forge ran exactly the declared number |
+| Solidity | `forge test` | forge 1.5.1-stable, solc 0.8.26 | <!-- fig:contracts.declared_tests -->120<!-- /fig --> passed, 0 failed; `check_test_count.py` confirms forge ran exactly the declared number |
 | pilot tables | `python3 pilot_sweep.py 0 6 20` | Python 3.12 | shipped in `results/`; hardest case rerun identical |
 
 All on the release commit, 2026-09-22, Linux x86-64. A hash match proves a file is the one recorded; this table records that the results were produced by running these files.

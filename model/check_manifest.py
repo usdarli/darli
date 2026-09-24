@@ -47,7 +47,7 @@ def required_files():
     that writes one: a new trace generator is covered the day it is added, not the day someone remembers to list it."""
     extra = []
     for root, suffix in (("contracts/src", ".sol"), ("contracts/test", ".sol"), ("contracts/test/vectors", ".json"),
-                         ("contracts/script", ".py")):
+                         ("contracts/script", ".py"), ("contracts/script", ".sol")):
         for dirpath, _, names in os.walk(os.path.join("..", root)):
             for n in sorted(names):
                 if n.endswith(suffix):
