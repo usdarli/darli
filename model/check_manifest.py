@@ -32,7 +32,7 @@ REQUIRED = [
     "contracts/test/vectors/math.json", "contracts/test/vectors/sorted_list.json", "contracts/test/vectors/branch_trace.json",
     "contracts/test/vectors/stability_pool.json", "contracts/script/branch_trace.py", "contracts/script/sp_trace.py",
 ]
-SUBMODULES = ["contracts/lib/forge-std", "contracts/lib/openzeppelin-contracts"]
+SUBMODULES = ["contracts/lib/forge-std", "contracts/lib/openzeppelin-contracts", "contracts/lib/v4-core"]
 
 FILE_ROW = re.compile(r"\| ((?:model|docs|contracts)/[\w./-]+) \| `([0-9a-f]{16})` \|")
 SUB_ROW = re.compile(r"\| (contracts/lib/[\w.-]+) \| `([0-9a-f]{40})` \| ([^|]*?) \|")
@@ -47,7 +47,7 @@ def required_files():
     that writes one: a new trace generator is covered the day it is added, not the day someone remembers to list it."""
     extra = []
     for root, suffix in (("contracts/src", ".sol"), ("contracts/test", ".sol"), ("contracts/test/vectors", ".json"),
-                         ("contracts/script", ".py"), ("contracts/script", ".sol")):
+                         ("contracts/script", ".py"), ("contracts/script", ".sol"), ("contracts/fork", ".sol")):
         for dirpath, _, names in os.walk(os.path.join("..", root)):
             for n in sorted(names):
                 if n.endswith(suffix):

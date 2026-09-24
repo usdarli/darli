@@ -220,6 +220,12 @@ import staking_trace  # noqa: E402
 ktrace, kstats = staking_trace.build(random.Random(20260930))
 (Path(__file__).resolve().parent.parent / "test" / "vectors" / "staking_trace.json").write_text(json.dumps(ktrace))
 
+# --- the liquidity vault's books (SPEC V6): see lp_trace.py ------------------------------------------------------------- #
+import lp_trace  # noqa: E402
+
+ltrace, lstats = lp_trace.build(random.Random(20261001))
+(Path(__file__).resolve().parent.parent / "test" / "vectors" / "lp_trace.json").write_text(json.dumps(ltrace))
+
 # --- the Stability Pool on its own (SPEC SP2, SP4): see sp_trace.py ---------------------------------------------------- #
 import sp_trace  # noqa: E402
 
@@ -274,6 +280,7 @@ fig("settle_trace_under_water", sum(x["settlement"]["under_water"] for x in ssta
 fig("staking_trace_steps", kstats["steps"])
 fig("staking_trace_exact_boundaries", kstats["exact_boundaries"])
 fig("staking_trace_multi_epoch_warps", kstats["multi_epoch_warps"])
+fig("lp_trace_steps", lstats["steps"])
 dump("contracts")
 print(f"wrote {out} ({len(dp['out'])} decPow, {len(ia['out'])} stepA, {len(ib['out'])} stepB vectors, "
       f"{overflowing} of them beyond where debt * rate fits in 256 bits)")
@@ -291,5 +298,6 @@ for variant, x in sstats.items():
     print(f"wrote settle_trace_{variant}.json ({x['steps']} steps: {x['ok']} accepted, {x['refused']} refused; {x['settlement']})")
 print(f"wrote staking_trace.json ({kstats['steps']} steps: {kstats['ok']} accepted, {kstats['refused']} refused; "
       f"{kstats['exact_boundaries']} warps to an exact epoch boundary, {kstats['multi_epoch_warps']} across several epochs)")
+print(f"wrote lp_trace.json ({lstats['steps']} steps: {lstats['ok']} accepted, {lstats['refused']} refused)")
 print(f"wrote {outl} ({n_ins} inserts, {n_rem} removals, {n_re} reinsertions; {len(checks['len'])} queues checked, "
       f"{ties} with tied rates, up to {max_size} Troves)")

@@ -70,13 +70,14 @@ contract DarliSystemTest is Test, DarliSystemBuild {
         p.frontendShare = 3 * PCT;
         p.betaWad = 4 * E; // SPEC 13 item 1 is open: the pilot simulations' value
         p.initialBaseRate = 10 * PCT;
-        p.darliRecipient = address(this); // SPEC 13 item 6 is open: placeholders
+        p.darliRecipient = address(this); // SPEC 13 item 4 is open: placeholders
         p.darliSupply = 1_000_000 * E;
         p.poolManager = pm;
         p.quote = address(quote);
         p.quoteDecimals = 18;
         p.poolFee = 100;
         p.tickSpacing = 1;
+        p.vaultHalfWidthTicks = 100;
         p.branches.push(_branch(weth, feed0, "WETH"));
         p.branches.push(_branch(wbtc, feed1, "C2"));
         _keep(_deploy(p, address(this)));
@@ -95,7 +96,7 @@ contract DarliSystemTest is Test, DarliSystemBuild {
     /// Storage cannot take a memory struct holding an array in one assignment.
     function _keep(SystemAddrs memory m) internal {
         (s.deployer, s.token, s.frontends, s.darli) = (m.deployer, m.token, m.frontends, m.darli);
-        (s.escrow, s.staking, s.router, s.registry) = (m.escrow, m.staking, m.router, m.registry);
+        (s.escrow, s.staking, s.router, s.registry, s.vault) = (m.escrow, m.staking, m.router, m.registry, m.vault);
         for (uint256 i = 0; i < m.branches.length; i++) {
             s.branches.push(m.branches[i]);
         }

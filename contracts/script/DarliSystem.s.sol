@@ -18,6 +18,9 @@ import {InterestEscrow} from "../src/core/InterestEscrow.sol";
 import {DarliToken} from "../src/revenue/DarliToken.sol";
 import {DarliStaking} from "../src/revenue/DarliStaking.sol";
 import {RevenueRouter} from "../src/revenue/RevenueRouter.sol";
+import {DarliLiquidityVault} from "../src/liquidity/DarliLiquidityVault.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IStableToken} from "../src/interfaces/IStableToken.sol";
 import {IPriceFeed} from "../src/interfaces/IPriceFeed.sol";
 import {IStabilityPool} from "../src/interfaces/IStabilityPool.sol";
@@ -60,13 +63,14 @@ struct SystemParams {
     uint256 frontendShare;
     uint256 betaWad; // SPEC 13 item 1: open
     uint256 initialBaseRate;
-    address darliRecipient; // SPEC 13 item 6: open
-    uint256 darliSupply; // SPEC 13 item 6: open
+    address darliRecipient; // SPEC 13 item 4: open
+    uint256 darliSupply; // SPEC 13 item 4: open
     IPoolManagerInit poolManager;
-    address quote; // SPEC 13 item 5: open
+    address quote; // SPEC 2: USDC
     uint8 quoteDecimals;
     uint24 poolFee;
-    int24 tickSpacing; // TO BE CONFIRMED on a fork
+    int24 tickSpacing;
+    int24 vaultHalfWidthTicks; // the liquidity vault's fixed range, either side of par
     BranchParams[] branches;
 }
 
@@ -88,6 +92,7 @@ struct SystemAddrs {
     DarliStaking staking;
     RevenueRouter router;
     CollateralRegistry registry;
+    DarliLiquidityVault vault;
     BranchAddrs[] branches;
 }
 
@@ -97,7 +102,8 @@ struct SystemAddrs {
 ///         afterwards, because nothing can be. The order, from the creator's current nonce n:
 ///           n       DarliDeployer (it creates the stablecoin, its first contract, in the deployment transaction)
 ///           n+1..6  FrontendRegistry, DarliToken, InterestEscrow, DarliStaking, RevenueRouter, CollateralRegistry
-///           then per branch: CollateralVault, TroveNFT, RateSortedList, StabilityPool, BranchSettlement, BranchManager.
+///           then per branch: CollateralVault, TroveNFT, RateSortedList, StabilityPool, BranchSettlement, BranchManager;
+///           last, the liquidity vault, bound to the canonical pool's key (D1, D4).
 ///         Then every immutable link is checked (`checkWiring`), and only then does `DarliDeployer.deploy` create the
 ///         token, check that every branch names it and seal the minter set for ever (D1). A contract cannot create the
 ///         whole system in one transaction: the branch alone is near the 24 KB code limit and initcode is capped at twice
@@ -129,6 +135,16 @@ abstract contract DarliSystemBuild is CommonBase {
         for (uint256 i = 0; i < nb; i++) {
             s.branches[i] = _buildBranch(p, s, i, address(managers[i]));
         }
+        s.vault = new DarliLiquidityVault(
+            IPoolManager(address(p.poolManager)),
+            address(token),
+            p.quote,
+            p.quoteDecimals,
+            p.poolFee,
+            p.tickSpacing,
+            p.vaultHalfWidthTicks,
+            s.darli
+        );
     }
 
     function _buildBranch(SystemParams memory p, SystemAddrs memory s, uint256 i, address manager)
@@ -199,6 +215,20 @@ abstract contract DarliSystemBuild is CommonBase {
         for (uint256 i = 0; i < s.branches.length; i++) {
             _checkBranch(s, p.branches[i], i);
         }
+        _checkVault(s, p);
+    }
+
+    function _checkVault(SystemAddrs memory s, SystemParams memory p) internal view {
+        DarliLiquidityVault v = s.vault;
+        (address c0, address c1) =
+            address(s.token) < p.quote ? (address(s.token), p.quote) : (p.quote, address(s.token));
+        _link(
+            address(v.poolManager()) == address(p.poolManager) && Currency.unwrap(v.currency0()) == c0
+                && Currency.unwrap(v.currency1()) == c1 && v.fee() == p.poolFee && v.tickSpacing() == p.tickSpacing
+                && address(v.rewardToken()) == address(s.darli),
+            "liquidity vault",
+            0
+        );
     }
 
     function _checkBranch(SystemAddrs memory s, BranchParams memory q, uint256 i) internal view {
@@ -255,6 +285,14 @@ abstract contract DarliSystemBuild is CommonBase {
         (StableToken token,) = s.deployer
             .deploy(p.name, p.symbol, minters, p.poolManager, p.quote, p.quoteDecimals, p.poolFee, p.tickSpacing);
         if (address(token) != address(s.token)) revert WiringMismatch("token not at its predicted address", 0);
+        // the vault is bound to exactly the pool the deployment initialised (D1)
+        (address c0, address c1, uint24 f, int24 ts, address hooks) = s.deployer.canonicalPool();
+        _link(
+            Currency.unwrap(s.vault.currency0()) == c0 && Currency.unwrap(s.vault.currency1()) == c1
+                && s.vault.fee() == f && s.vault.tickSpacing() == ts && hooks == address(0),
+            "liquidity vault not bound to the canonical pool",
+            0
+        );
     }
 }
 
@@ -270,17 +308,19 @@ contract DeployDarli is Script, DarliSystemBuild {
         p.frontendShare = 3 * PCT; // SPEC 2
         p.betaWad = vm.envUint("DARLI_BETA_WAD"); // open: SPEC 13 item 1
         p.initialBaseRate = vm.envUint("DARLI_INITIAL_BASE_RATE"); // R6: 10 % for the pilot, 100 % uncapped
-        p.darliRecipient = vm.envAddress("DARLI_RECIPIENT"); // open: SPEC 13 item 6
-        p.darliSupply = vm.envUint("DARLI_SUPPLY"); // open: SPEC 13 item 6
-        p.poolManager = IPoolManagerInit(vm.envAddress("V4_POOL_MANAGER"));
-        p.quote = vm.envAddress("QUOTE_TOKEN"); // open: SPEC 13 item 5
-        p.quoteDecimals = uint8(vm.envUint("QUOTE_DECIMALS"));
-        p.poolFee = uint24(vm.envUint("POOL_FEE"));
-        p.tickSpacing = int24(int256(vm.envUint("POOL_TICK_SPACING"))); // TO BE CONFIRMED on a fork
+        p.darliRecipient = vm.envAddress("DARLI_RECIPIENT"); // open: SPEC 13 item 4
+        p.darliSupply = vm.envUint("DARLI_SUPPLY"); // open: SPEC 13 item 4
+        // SPEC 2: the canonical pool and the vault, on Base (addresses checked on a fork: contracts/fork)
+        p.poolManager = IPoolManagerInit(0x498581fF718922c3f8e6A244956aF099B2652b2b); // Uniswap v4 PoolManager
+        p.quote = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913; // USDC, native
+        p.quoteDecimals = 6;
+        p.poolFee = 100; // 0.01 %
+        p.tickSpacing = 1;
+        p.vaultHalfWidthTicks = 100; // about 1 % either side of par
         p.branches = new BranchParams[](1);
         p.branches[0] = BranchParams({
-            collToken: IERC20(vm.envAddress("WETH")),
-            feed: IPriceFeed(vm.envAddress("WETH_FEED")),
+            collToken: IERC20(0x4200000000000000000000000000000000000006), // WETH on Base
+            feed: IPriceFeed(vm.envAddress("WETH_FEED")), // a SingleSourcePriceFeed built with SPEC 13 item 3 fixed
             mcr: 110 * PCT,
             ccr: 150 * PCT,
             scr: 110 * PCT,

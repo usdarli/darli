@@ -5,6 +5,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {IDarliStaking} from "../interfaces/ICore.sol";
+import {EpochStream} from "../libraries/EpochStream.sol";
 import {NotAuthorized, ZeroAmount} from "../Types.sol";
 
 /// @title DarliStaking
@@ -16,8 +17,7 @@ import {NotAuthorized, ZeroAmount} from "../Types.sol";
 ///         else; what was earned stays claimable after unstaking.
 /// @dev    A line-by-line port of `StreamingStaking` and `EpochStream` in `model/model.py`, replayed against it wei for
 ///         wei (`test_diff_stakingMatchesModel`). Amounts in the stream are scaled by PREC. External calls: the two tokens.
-///         `_accrue` walks one turn per epoch boundary crossed; while the stream has anything to pay that is one turn per
-///         week elapsed, and none once it is empty.
+///         The stream itself is the shared EpochStream library.
 contract DarliStaking is IDarliStaking, ReentrancyGuardTransient {
     using SafeERC20 for IERC20;
 
@@ -49,13 +49,6 @@ contract DarliStaking is IDarliStaking, ReentrancyGuardTransient {
 
     error ZeroAddress();
     error UnstakeExceedsStake();
-
-    struct Stream {
-        uint256 last;
-        uint256 rate;
-        uint256 queued;
-        uint256 idle;
-    }
 
     constructor(IERC20 darli_, IERC20 reward_, address router_) {
         if (address(darli_) == address(0) || address(reward_) == address(0) || router_ == address(0)) {
@@ -118,14 +111,14 @@ contract DarliStaking is IDarliStaking, ReentrancyGuardTransient {
 
     /// @notice scaled amount not yet streamed now: the rest of the running epoch and what waits for the next one.
     function unstreamed() external view returns (uint256) {
-        (, Stream memory s) = _accrue();
-        return s.rate * (s.rate != 0 ? _epochEnd(s.last) - s.last : 0) + s.queued + s.idle;
+        (, EpochStream.State memory s) = _accrue();
+        return EpochStream.unstreamed(s, t0, PERIOD);
     }
 
     // --- internals ----------------------------------------------------------------------------------------------------
 
     function _update(address who) internal {
-        (uint256 inc, Stream memory s) = _accrue();
+        (uint256 inc, EpochStream.State memory s) = _accrue();
         (last, rate, queued, idle) = (s.last, s.rate, s.queued, s.idle);
         rewardPerToken += inc;
         if (who != address(0)) {
@@ -134,35 +127,10 @@ contract DarliStaking is IDarliStaking, ReentrancyGuardTransient {
         }
     }
 
-    function _epochEnd(uint256 t) internal view returns (uint256) {
-        return t0 + ((t - t0) / PERIOD + 1) * PERIOD;
-    }
-
     /// The stream advanced to now, and the reward per staked token it adds. `totalStaked` is constant over the interval:
     /// every change of stake runs `_update` first.
-    function _accrue() internal view returns (uint256 inc, Stream memory s) {
-        s = Stream(last, rate, queued, idle);
-        uint256 total = totalStaked;
-        while (s.last < block.timestamp) {
-            uint256 end = _epochEnd(s.last);
-            if (end > block.timestamp) end = block.timestamp;
-            uint256 streamed = s.rate * (end - s.last);
-            if (total != 0) {
-                inc += streamed / total;
-            } else {
-                s.idle += streamed;
-            }
-            s.last = end;
-            if ((end - t0) % PERIOD == 0) {
-                // boundary: what waited, and what nobody was staked to receive, is the next epoch's
-                uint256 tot = s.queued + s.idle;
-                s.rate = tot / PERIOD;
-                s.queued = tot - s.rate * PERIOD;
-                s.idle = 0;
-            }
-            if (s.rate == 0 && s.queued == 0 && s.idle == 0) {
-                s.last = block.timestamp;
-            }
-        }
+    function _accrue() internal view returns (uint256 inc, EpochStream.State memory s) {
+        s = EpochStream.State(last, rate, queued, idle);
+        inc = EpochStream.advance(s, t0, PERIOD, totalStaked, block.timestamp);
     }
 }
