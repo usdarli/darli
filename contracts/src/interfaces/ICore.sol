@@ -1,12 +1,21 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
+/// SPEC §5: one entry point for every branch of a system. No owner, no setter: the branches, β and the initial base
+/// rate are fixed at construction.
 interface ICollateralRegistry {
-    function redeem(uint256 amount, uint256 maxIterationsPerBranch, uint256 maxFeeRate, uint256[] calldata minCollOut)
+    /// @notice burns up to `amount` of the caller's USDarli, routed across the redeemable branches (R3), for their
+    ///         collateral at the fee rate fixed before redeeming (R5). Reverts if that rate is above `maxFeeRate`, if no
+    ///         branch is redeemable, or if `amount` exceeds the caller's balance (SPEC 10.5).
+    function redeem(uint256 amount, uint256 maxIterationsPerBranch, uint256 maxFeeRate)
         external
         returns (uint256 redeemed);
-    function getRedemptionFeeRate(uint256 amount) external view returns (uint256);
+    /// @notice the fee rate a redemption of `amount` would pay now.
+    function redemptionFeeRate(uint256 amount) external view returns (uint256);
+    /// @notice the stored base rate, before decay.
     function baseRate() external view returns (uint256);
+    function lastFeeOperationTime() external view returns (uint256);
+    function branchCount() external view returns (uint256);
 }
 
 /// Custody of one branch's collateral. Only its BranchManager moves it, and every movement is accounted.
@@ -25,9 +34,19 @@ interface IInterestEscrow {
     function pull(uint256 amount) external;
 }
 
+/// SPEC V3: the escrow's balance to the staking contract fixed at construction; permissionless, no destination.
 interface IInterestRouter {
-    /// @notice permissionless: step A on every branch of the system, then split the escrow.
-    function syncAndDistribute() external;
+    function routeRevenue() external returns (uint256 amount);
+}
+
+/// SPEC V4, V5.
+interface IDarliStaking {
+    function stake(uint256 amount) external;
+    function unstake(uint256 amount) external;
+    function claim() external returns (uint256);
+    /// @notice only the router, after transferring `amount`: queued for the next epoch.
+    function notifyReward(uint256 amount) external;
+    function earnedOf(address who) external view returns (uint256);
 }
 
 /// SPEC V1, V2. Shared by every branch of a system; a caller counts as a branch exactly when it is a minter of the stablecoin.
@@ -41,7 +60,7 @@ interface IFrontendRegistry {
     /// @notice only branches; called in step B with (accrued interest + upfront fee). Rounds DOWN.
     function credit(uint32 frontendId, address troveOwner, uint256 amount) external;
     function claimable(address account) external view returns (uint256);
-    /// @notice ids 1 .. count() - 1 are registered; 0 is "untagged".
+    /// @notice ids 1 .. count() - 1 are registered; 0 is "untagged": the share goes to the Trove's owner.
     function count() external view returns (uint32);
 }
 
@@ -52,11 +71,6 @@ interface ITroveNFT {
     function ownerOf(uint256 troveId) external view returns (address);
     /// @notice the owner, or an address the owner approved for this Trove or for all of its Troves.
     function isOwnerOrApproved(address account, uint256 troveId) external view returns (bool);
-}
-
-interface IInitiative {
-    /// @notice tokens are already transferred; called with a guaranteed gas stipend inside one atomic self-call.
-    function notifyReward(uint256 amount) external;
 }
 
 /// The redemption queue of one branch (SPEC R2): Active Troves in a doubly linked list, head = highest (rate, id), tail =

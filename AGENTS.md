@@ -62,7 +62,7 @@ If any of these fails before your change, stop and report; do not start from a b
 - Math libraries must stay bit-for-bit equal to the model. Regenerate vectors with `python3 script/export_vectors.py ../model` and run the differential tests.
 - Reproduce the scenario in Foundry when the scenario's subject exists in Solidity. Test with the real predicted addresses (`vm.computeCreateAddress`), not placeholders.
 - Every external call needs a stated reason; `staticcall` with a gas stipend for the feed; no callbacks into user code from the core.
-- Anything not yet confirmed on a fork (PoolManager storage layout, feed gas cost, `tickSpacing`) stays marked `TO BE CONFIRMED` in the code comment. Do not remove such a marker without a fork test.
+- Anything not yet confirmed on a fork (the oracle's gas stipend and thresholds) stays marked `TO BE CONFIRMED` in the code comment. Do not remove such a marker without a fork test.
 
 **A documentation change:**
 - `docs/SPEC.md` is terse and rule-numbered; do not add narrative to it. Narrative belongs in the whitepaper.
@@ -80,7 +80,7 @@ If any of these fails before your change, stop and report; do not start from a b
 
 ## 6. Things that are genuinely open (do not silently decide them)
 
-See `docs/SPEC.md` §13: β, the gas deposit amount, oracle stipend and thresholds from a fork test, the PoolManager storage layout used after a failed pool initialisation, the vault's quote asset and position maths, DARLI supply and distribution, persistent failure in the shared settlement path, how each branch learns the stablecoin's address, who receives the interfaces' share of untagged Troves, and legal review. A task that needs one of these decided should propose, with evidence, and stop.
+See `docs/SPEC.md` §13: the gas deposit amount, the oracle's gas stipends, thresholds and pool set, DARLI supply and distribution, and legal review. A task that needs one of these decided should propose, with evidence, and stop.
 
 ## 7. Style
 

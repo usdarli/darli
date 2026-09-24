@@ -25,6 +25,9 @@ uint256 constant DUST_THRESHOLD = 1e12;
 uint256 constant MAX_BRANCHES_PER_SYSTEM = 10;
 uint256 constant REWARD_STREAM_PERIOD = 7 days;
 
+// Redemption fee (5.2): the floor every redemption pays, whatever the base rate.
+uint256 constant REDEMPTION_FEE_FLOOR = WAD / 200;
+
 // Redemption fee decay (5): exponent is capped so decPow cannot run unbounded.
 uint256 constant MAX_DECAY_MINUTES = 525_600_000;
 // floor(0.5^(1/360) * 1e18): six-hour half-life, per minute. Checked against the reference model.

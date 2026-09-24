@@ -2,23 +2,24 @@
 
 An immutable, ETH-backed stablecoin protocol for Base: borrowers set their own interest rate, a Stability Pool settles liquidations without market sales, a revenue-sharing token with no vote, and a staged, order-free settlement after shutdown.
 
-**Status: research pre-release 0.0.1 — specification, reference model and Solidity skeleton. Nothing is deployed or audited; the core contracts are not written. This repository is not an offer of any token or financial product.**
+**Status: research pre-release 0.0.1 — specification, reference model and a partial Solidity implementation. Nothing is deployed or audited. This repository is not an offer of any token or financial product.**
 
 | | |
 | --- | --- |
 | `docs/SPEC.md` | The normative specification: decisions in force, deployment constants, every rule with the test that pins it, open items |
 | `docs/WHITEPAPER.md` | The public whitepaper |
 | `docs/RESULTS.md` | Results of record: a hash manifest and the figures themselves, each recorded by the run that computes it and checked by `check_figures.py`. Every measured number in this file and in the whitepaper is generated, none is typed in, and the studies the whitepaper cites without reproducing are listed |
-| `model/` | Executable reference model (Python, standard library only, exact integer arithmetic): 30 scenarios, two fuzzers with asserted coverage floors, 32 mutants, an agent-based simulator |
+| `model/` | Executable reference model (Python, standard library only, exact integer arithmetic): scenarios, two fuzzers with asserted coverage floors, mutants that the tests must kill, an agent-based simulator |
 | `RELEASING.md` | Release checklist: what must be green, enabled and decided before a version is announced |
 | `AGENTS.md` | Operating rules for AI coding agents and contributors: what must never change, how a rule change is made, what looks like a bug but is not |
-| `contracts/` | Solidity (Foundry): math libraries checked bit-for-bit against the model, the stablecoin, the oracle adapter, the one-shot deployer. The core branch contracts are not written yet |
+| `frontend/` | One self-contained HTML page (no external script, style or font) for every user action, to be pinned on IPFS; each action can also be sent through Ethereum. `contracts/script/check_frontend.py` checks its function selectors against the contracts |
+| `contracts/` | Solidity (Foundry): math libraries checked bit-for-bit against the model, the stablecoin, the two-source oracle (an external feed backed by a pool source), the one-shot deployer, the live branch -- borrowing, the redemption queue, the Stability Pool, liquidation and redistribution, redemption and its routing across branches -- the settlement after a shutdown, a contract of its own, and the revenue router and DARLI staking, all replayed against model-driven traces wei for wei; the liquidity vault on Uniswap v4; and the build of a whole system at predicted addresses, checked link by link before it is sealed (`script/DarliSystem.s.sol`), with an end-to-end test of its life. `make fork` checks what needs Base itself -- the PoolManager's storage layout, the pool race, the vault on a real pool, the live price feed and the pools behind it -- on a fork at a pinned block, and the path around a censoring sequencer on an Ethereum fork (`script/ForceInclude.s.sol`). The branch contract is within a few hundred bytes of the 24 KB limit |
 
 ## What Darli is
 
 - Borrow USDarli against ETH at an interest rate you choose; the lowest rates are redeemed first.
 - Debt is settled by a Stability Pool, then by redistribution, then by an explicit bad-debt ledger. Liquidation never depends on selling collateral in a market.
-- One external ETH/USD feed per branch, with sequencer and staleness guards and a fixed gas stipend. The protocol's own pool is never a price source.
+- Two price sources per branch: an external ETH/USD feed, cross-checked against and backed by the liquidity-weighted median of third-party ETH/stablecoin pools; sequencer and staleness guards and fixed gas stipends. The protocol's own pool is never a price source.
 - **Immutable**: no owner, proxy, pause, setter or vote. The debt cap raises itself on a schedule. New collateral means a new, independent deployment.
 - **DARLI** has no vote; stakers receive 25% of interest and loan fees in fixed weekly epochs.
 - **After a shutdown**, one reference price is fixed, every Trove is settled, and every USDarli then claims the same fraction of the pot, in any order.
@@ -35,14 +36,14 @@ An immutable, ETH-backed stablecoin protocol for Base: borrowers set their own i
 `make check` runs all of it and is what CI runs; `make help` lists the targets. Individually:
 
     cd model
-    python3 test_scenarios.py          # 30 scenarios
+    python3 test_scenarios.py          # the scenarios
     python3 fuzz.py 30 300             # accounting fuzzer: invariants before and after every step, plus a floor on how often each operation must succeed
     python3 fuzz_oracle.py 200 150     # oracle failure detection
     python3 test_econ_sim.py           # simulator self-tests
     python3 mutants.py M39             # one mutant at a time
     python3 spec_check.py              # every scenario cited in SPEC.md exists and every scenario is cited (it does not check assertions)
 
-    python3 mutants.py                 # all 32 mutants; exit code 1 on a survivor or an invalid mutant
+    python3 mutants.py                 # every mutant; exit code 1 on a survivor or an invalid mutant
     python3 check_manifest.py          # every file behind docs/RESULTS.md has the recorded hash, contracts and submodule pins included
     python3 check_figures.py           # every number quoted in docs/RESULTS.md equals what the run above recorded
 
@@ -51,7 +52,7 @@ An immutable, ETH-backed stablecoin protocol for Base: borrowers set their own i
 
 ## Open items before implementation
 
-See `docs/SPEC.md` §13: β, the gas deposit amount, oracle thresholds from a fork test, the PoolManager storage layout used after a failed pool initialisation, the vault's quote asset and position maths, DARLI supply and distribution, persistent failure in the shared settlement path, how each branch learns the stablecoin's address, and legal review before any deployment.
+See `docs/SPEC.md` §13: the gas deposit amount, the oracle's gas stipends, thresholds and pool set, DARLI supply and distribution, and legal review before any deployment.
 
 ## Comparison with similar protocols
 
@@ -61,4 +62,4 @@ See `docs/WHITEPAPER.md`, Section 7, for a comparison with Liquity v1 and v2, Ma
 
 MIT, Copyright (c) 2026 USDarli. See `LICENSE`. This covers the whole repository: the documents, the reference model and the contracts; every Solidity file carries `SPDX-License-Identifier: MIT`. The submodules keep their own licenses (forge-std: MIT/Apache-2.0; OpenZeppelin: MIT).
 
-A permissive license is not permission to deploy this code. Nothing here is audited, the core contracts are not written, and the legal review named in `docs/SPEC.md` §13 has not been done.
+A permissive license is not permission to deploy this code. Nothing here is audited, the contracts are incomplete, and the legal review named in `docs/SPEC.md` §13 has not been done.

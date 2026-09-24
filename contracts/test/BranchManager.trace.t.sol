@@ -4,8 +4,9 @@ pragma solidity ^0.8.26;
 import {BranchFixture} from "./BranchFixture.sol";
 import {Trove, BranchLedger, PriceStatus} from "../src/Types.sol";
 
-/// SPEC §4, §8 and the shutdown triggers of §6.5, against the reference model: every operation of a model-driven
-/// trace is replayed, and every acceptance, every refusal and every recorded number must match the model's.
+/// SPEC §4, §5, §6 and §8 against the reference model: every operation of a model-driven trace -- borrowing, redemption,
+/// liquidation, redistribution, the Stability Pool, the shutdown triggers -- is replayed, and every acceptance, every refusal and
+/// every recorded number must match the model's.
 contract BranchManagerTraceTest is BranchFixture {
     struct Ops {
         uint256[] kind;
@@ -28,20 +29,25 @@ contract BranchManagerTraceTest is BranchFixture {
         uint256[] full;
     }
 
-    string json;
     uint256 troveCursor;
     uint256 queueCursor;
 
+    // the trace is read into memory by the test itself: stored in a state variable, a trace this size would cost more
+    // storage writes than the gas limit of setUp allows
+    string constant TRACE = "test/vectors/branch_trace.json";
+
     function setUp() public {
-        json = vm.readFile("test/vectors/borrower_trace.json");
+        string memory json = vm.readFile(TRACE);
         deployBranch(2000 * E, 400_000 * E, 1_600_000 * E, E / 1000);
+        assertEq(BETA_WAD, vm.parseJsonUint(json, ".config.betaWad"), "R5: the fixture's beta is the model's");
+        assertEq(INITIAL_BASE_RATE, vm.parseJsonUint(json, ".config.initialBaseRate"), "R6: so is its base rate");
         uint256 funding = vm.parseJsonUint(json, ".config.funding");
         for (uint256 i = 0; i < vm.parseJsonUint(json, ".config.users"); i++) {
             weth.mint(account(i), funding);
         }
     }
 
-    function _ops() internal view returns (Ops memory o) {
+    function _ops(string memory json) internal pure returns (Ops memory o) {
         o.kind = vm.parseJsonUintArray(json, ".ops.kind");
         o.caller = vm.parseJsonUintArray(json, ".ops.caller");
         o.tid = vm.parseJsonUintArray(json, ".ops.tid");
@@ -52,7 +58,7 @@ contract BranchManagerTraceTest is BranchFixture {
         o.ok = vm.parseJsonUintArray(json, ".ops.ok");
     }
 
-    function _expected() internal view returns (Expected memory x) {
+    function _expected(string memory json) internal pure returns (Expected memory x) {
         x.ledger = vm.parseJsonUintArray(json, ".ledger");
         x.ledgerLen = vm.parseJsonUint(json, ".ledgerLen");
         x.troves = vm.parseJsonUintArray(json, ".troves");
@@ -62,7 +68,7 @@ contract BranchManagerTraceTest is BranchFixture {
         x.full = vm.parseJsonUintArray(json, ".full");
     }
 
-    /// One step. Returns whether the contracts accepted it. Kinds follow OPS in borrower_trace.py.
+    /// One step. Returns whether the contracts accepted it. Kinds follow OPS in branch_trace.py.
     function _do(Ops memory o, uint256 i) internal returns (bool) {
         uint256 k = o.kind[i];
         address who = account(o.caller[i]);
@@ -108,6 +114,12 @@ contract BranchManagerTraceTest is BranchFixture {
         if (k == 16) return _try(address(registry), abi.encodeCall(registry.claim, ()));
         if (k == 17) return _try(address(manager), abi.encodeCall(manager.triggerShutdown, ()));
         if (k == 18) return _try(address(manager), abi.encodeCall(manager.pokeOracle, ()));
+        if (k == 19) return _try(address(manager), abi.encodeCall(manager.liquidate, (tid)));
+        if (k == 20) return _try(address(sp), abi.encodeCall(sp.claim, ()));
+        if (k == 21) return _try(address(manager), abi.encodeCall(manager.claimSurplus, ()));
+        if (k == 22) {
+            return _try(address(collRegistry), abi.encodeCall(collRegistry.redeem, (o.a[i], o.b[i], o.c[i])));
+        }
         revert("unknown operation kind");
     }
 
@@ -117,7 +129,7 @@ contract BranchManagerTraceTest is BranchFixture {
 
     function _ledgerNow() internal view returns (uint256[] memory v) {
         BranchLedger memory l = manager.ledger();
-        v = new uint256[](23 + 3 * N_ACCOUNTS);
+        v = new uint256[](40 + 9 * N_ACCOUNTS);
         v[0] = l.aggDebt;
         v[1] = l.aggWeightedDebtSum;
         v[2] = l.lastAggUpdate;
@@ -141,14 +153,48 @@ contract BranchManagerTraceTest is BranchFixture {
         v[20] = registry.totalCredited();
         v[21] = sp.totalDeposits();
         v[22] = feed.lastGoodPrice();
+        v[23] = manager.lColl();
+        v[24] = manager.lDebt();
+        v[25] = manager.lCollError();
+        v[26] = manager.lDebtError();
+        v[27] = manager.totalStakesSnapshot();
+        v[28] = manager.totalCollSnapshot();
+        v[29] = l.badDebtColl;
+        _poolNow(v);
         for (uint256 j = 0; j < N_ACCOUNTS; j++) {
-            v[23 + 3 * j] = stable.balanceOf(account(j));
-            v[24 + 3 * j] = weth.balanceOf(account(j));
-            v[25 + 3 * j] = registry.claimable(account(j));
+            _accountNow(v, j);
         }
     }
 
-    function _troveNow(uint256 tid) internal view returns (uint256[10] memory v) {
+    function _poolNow(uint256[] memory v) internal view {
+        uint256 scale = sp.currentScale();
+        v[30] = sp.P();
+        v[31] = scale;
+        v[32] = sp.errColl();
+        v[33] = sp.errYield();
+        v[34] = sp.scaleToS(scale);
+        v[35] = sp.scaleToB(scale);
+        v[36] = weth.balanceOf(address(sp));
+        v[37] = collRegistry.baseRate();
+        v[38] = collRegistry.lastFeeOperationTime();
+        v[39] = manager.lastZombieTroveId();
+    }
+
+    function _accountNow(uint256[] memory v, uint256 j) internal view {
+        address a = account(j);
+        uint256 o = 40 + 9 * j;
+        v[o] = stable.balanceOf(a);
+        v[o + 1] = weth.balanceOf(a);
+        v[o + 2] = registry.claimable(a);
+        v[o + 3] = manager.surplus(a);
+        v[o + 4] = sp.compoundedDeposit(a);
+        v[o + 5] = sp.pendingColl(a);
+        v[o + 6] = sp.pendingYield(a);
+        v[o + 7] = sp.claimableColl(a);
+        v[o + 8] = sp.claimableYield(a);
+    }
+
+    function _troveNow(uint256 tid) internal view returns (uint256[12] memory v) {
         Trove memory t = manager.getTrove(tid);
         uint256 owner;
         if (uint8(t.status) == 1 || uint8(t.status) == 2) {
@@ -164,7 +210,9 @@ contract BranchManagerTraceTest is BranchFixture {
             uint256(t.lastRateAdjust),
             uint256(uint8(t.status)),
             manager.gasLeft(tid),
-            owner
+            owner,
+            t.snapshotLColl,
+            t.snapshotLDebt
         ];
     }
 
@@ -179,8 +227,8 @@ contract BranchManagerTraceTest is BranchFixture {
         }
         for (uint256 n = 0; n < x.trovesLen[step]; n++) {
             uint256 tid = x.troves[troveCursor];
-            uint256[10] memory t = _troveNow(tid);
-            for (uint256 f = 0; f < 10; f++) {
+            uint256[12] memory t = _troveNow(tid);
+            for (uint256 f = 0; f < 12; f++) {
                 if (t[f] != x.troves[troveCursor + f]) {
                     emit log_named_uint("step", step);
                     emit log_named_uint("trove", tid);
@@ -188,7 +236,7 @@ contract BranchManagerTraceTest is BranchFixture {
                     assertEq(t[f], x.troves[troveCursor + f], "Trove differs from the model");
                 }
             }
-            troveCursor += 10;
+            troveCursor += 12;
         }
         if (x.full[step] == 1) {
             assertEq(list.size(), x.queueLen[step], "R2: queue length differs from the model");
@@ -201,9 +249,10 @@ contract BranchManagerTraceTest is BranchFixture {
         }
     }
 
-    function test_diff_borrowerTraceMatchesModel() public {
-        Ops memory o = _ops();
-        Expected memory x = _expected();
+    function test_diff_branchTraceMatchesModel() public {
+        string memory json = vm.readFile(TRACE);
+        Ops memory o = _ops(json);
+        Expected memory x = _expected(json);
         assertGt(o.kind.length, 500, "too short to be a differential test");
         for (uint256 i = 0; i < o.kind.length; i++) {
             bool ok = _do(o, i);

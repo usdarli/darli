@@ -576,8 +576,8 @@ def run(p: Params):
                         K["cash"] -= 2 * p.gas_usd
                         borrowers.append(kb)
                         m["mint_arb"] = m.get("mint_arb", 0) + 1
-        # daily decisions
-        if h % 24 == 0:
+        # daily decisions; none once the branch has shut down within this hour (settled at the top of the next)
+        if h % 24 == 0 and not b.shutdown_at:
             if DAILY_HOOK:
                 DAILY_HOOK(s, b, pool, K, borrowers, eth)
             price = pool.price

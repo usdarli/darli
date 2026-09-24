@@ -94,11 +94,16 @@ class Feed:
         self.price = price
         self.status = VALID
         self.last_good = price
+        self.redemption_price = None            # None: plain collateral, the redemption price is the price
 
     def fetch(self):
         if self.status == VALID:
             self.last_good = self.price
         return self.price, self.status
+
+    def fetch_redemption(self):
+        price, status = self.fetch()
+        return (self.redemption_price if self.redemption_price and status == VALID else price), status
 
 
 
@@ -160,6 +165,81 @@ class Source:
         return self.value, self.updated_at
 
 
+class PoolSource:
+    """The pool source of SPEC O7 as the feed sees it: a price, or 0 when unavailable (fewer than MIN_DEPTH of weight
+    among fresh, readable pools). How that price is computed from the pools is `pool_twap_price` below."""
+
+    def __init__(self, clock, value, gas_cost=150_000):
+        self.clock, self.value, self.available = clock, value, True
+        self.reverts = False
+        self.burns_all_gas = False
+        self.gas_cost = gas_cost
+        self.nested = False
+
+    def read(self, gas):
+        if self.burns_all_gas or gas < self.gas_cost:
+            raise OutOfGas()
+        if self.reverts:
+            raise SourceRevert()
+        return (self.value if self.available else 0), self.clock.now
+
+
+# --- SPEC O7: the pool source's arithmetic, exactly as the contracts do it ------------------------------------------ #
+MAX_TICK = 887272
+_TICK_FACTORS = [(0x2, 0xfff97272373d413259a46990580e213a), (0x4, 0xfff2e50f5f656932ef12357cf3c7fdcc),
+                 (0x8, 0xffe5caca7e10e4e61c3624eaa0941cd0), (0x10, 0xffcb9843d60f6159c9db58835c926644),
+                 (0x20, 0xff973b41fa98c081472e6896dfb254c0), (0x40, 0xff2ea16466c96a3843ec78b326b52861),
+                 (0x80, 0xfe5dee046a99a2a811c461f1969c3053), (0x100, 0xfcbe86c7900a88aedcffc83b479aa3a4),
+                 (0x200, 0xf987a7253ac413176f2b074cf7815e54), (0x400, 0xf3392b0822b70005940c7a398e4b70f3),
+                 (0x800, 0xe7159475a2c29b7443b29c7fa6e889d9), (0x1000, 0xd097f3bdfd2022b8845ad8f792aa5825),
+                 (0x2000, 0xa9f746462d870fdf8a65dc1f90e061e5), (0x4000, 0x70d869a156d2a1b890bb3df62baf32f7),
+                 (0x8000, 0x31be135f97d08fd981231505542fcfa6), (0x10000, 0x9aa508b5b7a84e1c677de54f3e99bc9),
+                 (0x20000, 0x5d6af8dedb81196699c329225ee604), (0x40000, 0x2216e584f5fa1ea926041bedfe98),
+                 (0x80000, 0x48a170391f7dc42444e8fa2)]
+U256 = 2**256
+
+
+def sqrt_price_at_tick(tick):
+    """Uniswap's TickMath.getSqrtPriceAtTick, bit for bit."""
+    a = abs(tick)
+    require(a <= MAX_TICK, "tick out of range")
+    price = 0xfffcb933bd6fad37aa2d162d1a594001 if a & 0x1 else 1 << 128
+    for bit, factor in _TICK_FACTORS:
+        if a & bit:
+            price = (price * factor) >> 128
+    if tick > 0:
+        price = (U256 - 1) // price
+    return (price + (1 << 32) - 1) >> 32
+
+
+def pool_twap_quote(tick_delta, spl_delta, window, weth_is_0, stable_decimals):
+    """One pool over the window (SPEC O7): (price, weight), 18 decimals, or None when the pool must be left out."""
+    t = tick_delta // window                                # floor, toward minus infinity
+    if not weth_is_0:
+        t = -t                                              # WETH as the base
+    if abs(t) > MAX_TICK or spl_delta % 2**160 == 0:
+        return None
+    liq = min(window * (2**160 - 1) // ((spl_delta % 2**160) << 32), 2**128 - 1)
+    s = sqrt_price_at_tick(t)
+    price = (s * s // 2**64) * 10**(36 - stable_decimals) // 2**128
+    weight = (liq * s // 2**96) * 10**(18 - stable_decimals)
+    return price, weight
+
+
+def pool_twap_price(quotes, min_depth):
+    """SPEC O7: the liquidity-weighted median of the pools that were not left out; 0 (unavailable) below MIN_DEPTH.
+    Sorted by price, ties kept in construction order; the first price at which the cumulative weight reaches half."""
+    quotes = [q for q in quotes if q is not None]
+    total = sum(w for _, w in quotes)
+    if total < min_depth or total == 0:
+        return 0
+    acc = 0
+    for p, w in sorted(quotes, key=lambda q: q[0]):         # a stable sort: ties stay in construction order
+        acc += w
+        if 2 * acc >= total:
+            return p
+
+
 class OracleFeed:
     """
     gas_mode:
@@ -172,8 +252,14 @@ class OracleFeed:
     GAS_BUFFER = 20_000
 
     def __init__(self, clock, sources, staleness, timeout, *, sequencer=None, grace=3600,
-                 combine="single", max_skew=None, gas_mode="stipend", feed_gas_limit=200_000):
+                 combine="single", max_skew=None, gas_mode="stipend", feed_gas_limit=200_000,
+                 pool_source=None, max_deviation=None, pool_gas_limit=400_000):
         self.FEED_GAS_LIMIT = feed_gas_limit    # immutable per feed; must sit well above the honest cost
+        # SPEC O7, O8: the second source, fixed at construction (None: the single-source feed, exactly)
+        self.pool_source, self.max_deviation, self.POOL_GAS_LIMIT = pool_source, max_deviation, pool_gas_limit
+        assert pool_source is None or (max_deviation is not None and max_deviation > 0)
+        self.pool_invalid_since = 0
+        self.disagree_since = 0
         assert len(sources) == len(staleness)
         assert all(st < timeout for st in staleness), "stalenessThreshold < ORACLE_FAILURE_TIMEOUT (strict)"
         self.clock, self.sources, self.staleness, self.timeout = clock, sources, staleness, timeout
@@ -182,15 +268,17 @@ class OracleFeed:
         self.last_valid_at = clock.now
         price, status = self.fetch()
         require(status == VALID, "feed must be healthy at creation")     # 7, item 5
+        require(self.pool_invalid_since == 0, "the pool source must answer at creation")
         self.last_good = price
 
     # -- one guarded source read -> ("ok", value, updated_at) | ("malformed",)
-    def _read(self, src):
+    def _read(self, src, stipend=None):
         gas = self._gas
+        stipend = stipend or self.FEED_GAS_LIMIT
         if self.gas_mode == "stipend":
-            require(gas >= (self.FEED_GAS_LIMIT + CALL_OVERHEAD) * 64 // 63 + self.GAS_BUFFER,
+            require(gas >= (stipend + CALL_OVERHEAD) * 64 // 63 + self.GAS_BUFFER,
                     "insufficient gas for oracle call")
-            forwarded = self.FEED_GAS_LIMIT
+            forwarded = stipend
         else:
             require(gas > CALL_OVERHEAD, "out of gas")
             forwarded = (gas - CALL_OVERHEAD) * 63 // 64
@@ -211,39 +299,75 @@ class OracleFeed:
     def _sequencer_ok_for(self, duration):
         return self.seq is None or (self.seq.is_up and self.clock.now - self.seq.since >= duration)
 
+    def fetch_redemption(self, gas=10**7):
+        """Plain collateral: the redemption price is a second read of the same price, as in SingleSourcePriceFeed."""
+        return self.fetch(gas)
+
     def fetch(self, gas=10**7):
         now = self.clock.now
         # 1. network first: a sequencer outage makes every feed look stale
         if self.seq is not None and not self._sequencer_ok_for(self.grace):
             return getattr(self, "last_good", 0), NETWORK_UNSTABLE
-        # 2. read every source
+        # 2. read every source, then the pool source
         self._gas = gas
         reads = [self._read(src) for src in self.sources]
+        pool = self._read(self.pool_source, self.POOL_GAS_LIMIT) if self.pool_source is not None else None
         require(self._gas >= REST_OF_TX_GAS, "out of gas in the rest of the transaction")
         can_fail = self._sequencer_ok_for(self.timeout)
+        # 3. the pool source (O7, O8): available, or unavailable since its marker
+        pool_ok = pool is not None and pool[0] == "ok"
+        if self.pool_source is not None:
+            if pool_ok:
+                self.pool_invalid_since = 0
+            elif self.pool_invalid_since == 0:
+                self.pool_invalid_since = now               # persists only if this transaction does not revert
+        pool_dead = self.pool_source is None or (not pool_ok and now - self.pool_invalid_since >= self.timeout and can_fail)
+        # 4. the primary: healthy, dead, or temporarily bad
+        primary = "temp"
         if any(r[0] == "malformed" for r in reads):
             if self.invalid_since == 0:
                 self.invalid_since = now                     # persists only if this transaction does not revert
+            elif now - self.invalid_since >= self.timeout and can_fail:
+                primary = "dead"
+        else:
+            stamps = [r[2] for r in reads]
+            stale = any(now - ts > st for ts, st in zip(stamps, self.staleness))
+            skewed = self.max_skew is not None and max(stamps) - min(stamps) > self.max_skew
+            if stale or skewed:
+                # a well-formed but old answer neither sets nor clears the malformed marker
+                if now - min(stamps) > self.timeout and can_fail:
+                    primary = "dead"
+            else:
+                primary = "healthy"
+                self.invalid_since = 0
+        # 5. the decision (O8)
+        if primary == "healthy":
+            values = [r[1] for r in reads]
+            if self.combine == "single":
+                price = values[0]
+            elif self.combine == "ratio":                    # COLL/USD divided by REF/USD
+                price = values[0] * WAD // values[1]
+            else:                                            # "product": LST/ETH times ETH/USD
+                price = values[0] * values[1] // WAD
+            if pool_ok and self._disagree(price, pool[1]):
+                if self.disagree_since == 0:
+                    self.disagree_since = now
+                elif now - self.disagree_since >= self.timeout and can_fail:
+                    return self.last_good, FAILED
                 return self.last_good, PRICE_INVALID
-            if now - self.invalid_since >= self.timeout and can_fail:
+            return self._valid(price, now)
+        if primary == "dead":
+            if pool_ok:
+                return self._valid(pool[1], now)             # the fallback: a dead primary no longer shuts down
+            if pool_dead:
                 return self.last_good, FAILED
-            return self.last_good, PRICE_INVALID
-        stamps = [r[2] for r in reads]
-        stale = any(now - ts > st for ts, st in zip(stamps, self.staleness))
-        skewed = self.max_skew is not None and max(stamps) - min(stamps) > self.max_skew
-        if stale or skewed:
-            # a well-formed but old answer neither sets nor clears the malformed marker
-            if now - min(stamps) > self.timeout and can_fail:
-                return self.last_good, FAILED
-            return self.last_good, PRICE_INVALID
-        values = [r[1] for r in reads]
-        if self.combine == "single":
-            price = values[0]
-        elif self.combine == "ratio":                        # COLL/USD divided by REF/USD
-            price = values[0] * WAD // values[1]
-        else:                                                # "product": LST/ETH times ETH/USD
-            price = values[0] * values[1] // WAD
-        self.last_good, self.last_valid_at, self.invalid_since = price, now, 0
+        return self.last_good, PRICE_INVALID
+
+    def _disagree(self, a, b):
+        return max(a, b) * WAD > min(a, b) * (WAD + self.max_deviation)
+
+    def _valid(self, price, now):
+        self.last_good, self.last_valid_at, self.disagree_since = price, now, 0
         return price, VALID
 
     # ground truth helpers for tests (not part of the contract)
@@ -261,7 +385,6 @@ class OracleFeed:
 # --------------------------------------------------------------------------- #
 class FrontendRegistry:
     ADDR = "FrontendRegistry"
-    INCENTIVES = "IncentiveController"
 
     def __init__(self, stable, share):
         self.stable = stable
@@ -293,7 +416,9 @@ class FrontendRegistry:
         reward = x * self.share // WAD          # rounds DOWN
         self.total_credited += reward
         if fid == 0:
-            self.claimable[self.INCENTIVES] += reward
+            # SPEC V2: no frontend brought this Trove (a command-line or self-written client), so its share goes back to
+            # the owner, exactly as a self-referral with full kickback would
+            self.claimable[owner] += reward
             return
         fe = self.frontends[fid]
         to_owner = reward * fe["kickback"] // WAD
@@ -768,6 +893,12 @@ class Branch:
             self.stable.mint(t.owner, d_debt)
             self._mint_interest_split(fee)
             require(t.debt >= self.min_debt, "debt < MIN_DEBT")
+            if t.status == ZOMBIE:
+                # SPEC B4: back at the minimum, the Trove is Active again and rejoins the redemption queue. Without this,
+                # a Trove redeemed to zero (an untracked Zombie) could borrow back here and never be redeemed again
+                t.status = ACTIVE
+                if self.last_zombie == t.id:
+                    self.last_zombie = 0
         elif before >= self.min_debt:
             require(t.debt >= self.min_debt, "repay would leave dust debt")
         if d_coll < 0:
@@ -896,10 +1027,7 @@ class Branch:
         self.unsettled = self.n_open
         if self.unsettled == 0:
             self._end_phase_one()
-        try:
-            self._settle_price()
-        except Revert:
-            pass                                   # no definite oracle status yet: fixed by the first settlement instead
+        self._settle_price()                       # fixed now, whatever the feed's state (X1)
 
     def poke_oracle(self, gas=10**7):
         """Permissionless observation. It is the only path that reliably persists the `invalidSince` marker,
@@ -1058,8 +1186,9 @@ class Branch:
         if status == FAILED:
             self.oracle_failed = True
             return self.feed.last_good
-        require(status == VALID, f"shutdown op waits for a definite oracle status ({status})")
-        return price
+        if status == VALID:
+            return price
+        return self.feed.last_good                 # a temporary state: the last good price; settlement never waits (X1)
 
     # -- liquidation (SPEC 6.2) ----------------------------------------------
     def liquidate(self, tid, liquidator):
@@ -1119,8 +1248,20 @@ class Branch:
         self.n_redist += 1
 
     def claim_surplus(self, who):
+        """Both surpluses in one transaction: the settlement part first, so an owner with settlement surplus before phase 1
+        ends is refused as a whole. Each part can also be claimed on its own."""
+        return self.claim_settlement_surplus(who) + self.claim_liquidation_surplus(who)
+
+    def claim_liquidation_surplus(self, who):
+        """SPEC L3: what a liquidation left over belongs to the owner, claimable any time, also during settlement phase 1."""
         amt = self.surplus[who]
         self.surplus[who] = 0
+        self._coll_out(who, amt)
+        return amt
+
+    def claim_settlement_surplus(self, who):
+        """SPEC X11: the owner's kept share of the surplus of his settled Troves, released when phase 1 is complete."""
+        amt = 0
         if self.gross_of[who]:
             require(self.unsettled == 0 and self.surplus_keep is not None, "surplus is released when settlement phase 1 is complete")
             # entitlement = floor(gross * keep) - amount actually paid. gross only grows (a late Trove of the same owner) and keep
@@ -1130,8 +1271,8 @@ class Branch:
             if part > 0:
                 self.surplus_paid_amt[who] += part
                 self.settle_surplus_pool -= part
-                amt += part
-        self._coll_out(who, amt)
+                amt = part
+            self._coll_out(who, amt)
         return amt
 
     # -- redemption inside the branch (SPEC 5) ------------------------------------
@@ -1141,8 +1282,10 @@ class Branch:
         return sorted((t for t in self.troves.values() if t.status == ACTIVE), key=lambda t: (t.rate, t.id))
 
     def redeem_from_branch(self, redeemer, amount, price, fee_rate, max_iter, redemption_price=None):
-        """`price` decides redeemability (ICR >= 100%); `redemption_price` converts debt to collateral."""
-        redemption_price = redemption_price or price
+        """`price` decides redeemability (ICR >= 100%); `redemption_price` converts debt to collateral, never below
+        `price` (SPEC R4): a feed can make redemption dearer for the redeemer, never cheaper, so the conversion never
+        draws more than a Trove at 100 % or more holds"""
+        redemption_price = max(redemption_price or price, price)
         self._step_a()
         remaining, coll_total, it = amount, 0, 0
         first = [self.troves[self.last_zombie]] if self.last_zombie else []
@@ -1377,10 +1520,15 @@ class LPFeeVault:
         return tuple(self.owed[who][k] + self.shares[who] * (self.acc[k] - self.snap[who][k]) // self.PREC
                      for k in range(3))
 
-    def claim(self, who):
+    def claim(self, who, k=None):
+        """Token k alone (SPEC V7), or all three when k is None. A claim of one token leaves the others owed."""
         self._settle(who)
-        out = tuple(self.owed[who])
-        self.owed[who] = [0, 0, 0]
+        if k is None:
+            out = tuple(self.owed[who])
+            self.owed[who] = [0, 0, 0]
+            return out
+        out = self.owed[who][k]
+        self.owed[who][k] = 0
         return out
 
 
@@ -1495,32 +1643,35 @@ class System:
 
     def redeem(self, redeemer, amount, max_iter=20, max_fee_rate=WAD):
         require(amount > 0 and self.stable.supply > 0, "nothing to redeem")
+        require(self.stable.bal[redeemer] >= amount, "redemption request above the redeemer's balance")  # SPEC 10.5
         live = []
         for b in self.branches.values():
             if b.shutdown_at:
                 continue
             price, status = b.feed.fetch()
             if status == VALID and b.tcr(price) >= b.scr:
-                live.append((b, price))
+                rprice, rstatus = b.feed.fetch_redemption()
+                if rstatus == VALID and rprice:
+                    live.append((b, price, rprice))
         require(live, "no branch with a valid price")
         # SPEC-GAP 4: the fee is fixed from the *requested* amount before redeeming,
         # because the collateral fee of every trove needs the rate up front.
         supply_before = self.stable.supply
         beta_w = self.beta_wad()                 # sampled once: the fee and the base-rate update must use the SAME beta
-        unbacked = [max(b.agg_debt - max(b.sp.total - MIN_SP_RESIDUAL, 0), 0) for b, _ in live]
+        unbacked = [max(b.agg_debt - max(b.sp.total - MIN_SP_RESIDUAL, 0), 0) for b, _, _ in live]
         if sum(unbacked):
             weights = unbacked
             # never redeem more than the total unbacked in one call: beyond that point the
             # proportions would no longer reflect which branch lacks SP backing
             amount = min(amount, sum(unbacked))
         else:
-            weights = [b.agg_debt for b, _ in live]
+            weights = [b.agg_debt for b, _, _ in live]
         require(sum(weights) > 0, "no debt to redeem against")
         fee_rate, _ = self.redemption_fee_rate(amount)
         require(fee_rate <= max_fee_rate, "fee rate > max")
         redeemed_total, out = 0, {}
         left_amt, left_w = amount, sum(weights)
-        for (b, price), w in zip(live, weights):
+        for (b, price, rprice), w in zip(live, weights):
             if w == 0:
                 continue
             share = left_amt * w // left_w      # running remainder: shares add up to `amount` exactly
@@ -1528,7 +1679,7 @@ class System:
             left_w -= w
             if share == 0:
                 continue
-            red, coll = b.redeem_from_branch(redeemer, share, price, fee_rate, max_iter)
+            red, coll = b.redeem_from_branch(redeemer, share, price, fee_rate, max_iter, redemption_price=rprice)
             redeemed_total += red
             out[b.name] = coll
         decayed, minutes = self._decayed_base_rate()
@@ -1695,5 +1846,5 @@ def check_invariants(system, tag=""):
     return report
 
 
-MODEL_CLASSES = (EpochStream, UniswapStub, Deployment, LPFeeVault, Sequencer, Source, OracleFeed, Token, Feed, FrontendRegistry, StabilityPool, Trove, Branch, System, Clock,
+MODEL_CLASSES = (EpochStream, UniswapStub, Deployment, LPFeeVault, Sequencer, Source, PoolSource, OracleFeed, Token, Feed, FrontendRegistry, StabilityPool, Trove, Branch, System, Clock,
                  StreamingStaking)

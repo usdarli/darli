@@ -68,7 +68,7 @@ def test_03_conservation_every_day():
 def test_04_budget_shortfall_stops_only_the_keeper():
     """Round-7 bug: a keeper-budget shortfall skipped the rest of the hour. With a zero budget the keeper can never trade,
     and everything else must behave exactly as with mint_arb switched off."""
-    base = dict(seed=3, days=90, crash_day=30, sell_frac=0.5, **PILOT)     # a run in which the upper side IS needed (the blindness checks below guard the choice of seed)
+    base = dict(seed=4, days=90, crash_day=30, sell_frac=0.5, **PILOT)     # a run in which the upper side IS needed (the blindness checks below guard the choice of seed)
     ample = run(replace(Params(), **base))
     assert ample["upper_keeper_collateral"] > 0, "test is blind: the keeper never traded in the reference run"
     a = run(replace(Params(), **{**base, "upper_keeper_budget_usd": 1e-9}))

@@ -8,11 +8,14 @@
 #   make check      smoke + evidence + contracts: the whole release gate
 #   make record     regenerate figures and manifest after a change, then read the diff
 #   make fmt        format the Solidity (read `forge fmt` in AGENTS.md 7 first)
+#   make fork       the tests that need Base itself (contracts/fork), against the first public endpoint that answers,
+#                   and the forced-inclusion test against the first Ethereum endpoint that answers
+#   make rehearse   the deployment scripts and a user, in real transactions on a local fork of Base (anvil)
 
 MAKEFLAGS += --no-print-directory
 SHELL := /bin/bash
 PY ?= python3
-.PHONY: help smoke evidence contracts check record fmt clean
+.PHONY: help smoke evidence contracts check record fmt fork rehearse clean
 
 help:
 	@sed -n 's/^#   //p' $(MAKEFILE_LIST)
@@ -53,13 +56,36 @@ record:
 
 # --- contracts ---------------------------------------------------------------------------------------------------- #
 contracts:
-	cd contracts && forge fmt --check
+	cd contracts && forge fmt --check && forge fmt --check fork
 	cd contracts && $(PY) script/export_vectors.py ../model
 	git diff --exit-code -- contracts/test/vectors
 	cd contracts && set -o pipefail && forge test | $(PY) script/check_test_count.py
+	cd contracts && $(PY) script/check_frontend.py
 
 fmt:
-	cd contracts && forge fmt
+	cd contracts && forge fmt && forge fmt fork
+
+# --- Base itself --------------------------------------------------------------------------------------------------- #
+# Public endpoints that serve state at the pinned block (archive); each answered a burst of 40 storage reads in full.
+# Blast first: Tenderly rate-limits a fork's first reads on a busy day, and an endpoint that answers `eth_blockNumber`
+# and then refuses the fork fails the run. BASE_RPC_URL set in the environment is tried alone. A failing test fails on
+# every endpoint; only an unreachable endpoint moves on to the next.
+BASE_RPC_URLS ?= https://base-mainnet.public.blastapi.io https://base.gateway.tenderly.co https://mainnet.base.org
+# the deployment rehearsal: DeployFeed, DeployDarli and an ordinary user, in real transactions on a local fork of Base
+rehearse:
+	cd contracts && bash script/rehearse.sh
+
+ETH_RPC_URLS ?= https://ethereum-rpc.publicnode.com https://eth-mainnet.public.blastapi.io
+fork:
+	@cd contracts && eth=""; for url in $${ETH_RPC_URL:-$(ETH_RPC_URLS)}; do \
+	  if curl -s -m 10 -X POST -H 'content-type: application/json' \
+	    --data '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}' "$$url" | grep -q result; then \
+	    eth=$$url; break; fi; done; echo "fork: Ethereum $$eth"; \
+	  urls="$${BASE_RPC_URL:-$(BASE_RPC_URLS)}"; for url in $$urls; do \
+	  if curl -s -m 10 -X POST -H 'content-type: application/json' \
+	    --data '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}' "$$url" | grep -q result; then \
+	    echo "fork: $$url"; FOUNDRY_PROFILE=fork BASE_RPC_URL=$$url ETH_RPC_URL=$$eth forge test -vv; exit $$?; fi; \
+	  echo "fork: $$url does not answer, trying the next"; done; echo "fork: no endpoint answered"; exit 1
 
 check: smoke evidence contracts
 	@echo "all green: this is the release gate of RELEASING.md steps 1-2"

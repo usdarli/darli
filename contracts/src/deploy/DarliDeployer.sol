@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {StableToken} from "../core/StableToken.sol";
+import {IBranchManager} from "../interfaces/IBranchManager.sol";
 
 /// @dev Minimal view of the Uniswap v4 PoolManager: only what deployment needs. Darli does not fork or import v4.
 struct PoolKey {
@@ -18,13 +19,15 @@ interface IPoolManagerInit {
     ///      of its first word are sqrtPriceX96 (0 = pool does not exist). Matches v4-core SOURCE at commit 46c6834: POOLS_SLOT
     ///      = 6, the state slot is keccak256(abi.encodePacked(poolId, POOLS_SLOT)) -- byte-identical to abi.encode for two
     ///      bytes32, pinned by `test_slotDerivation_encodeEqualsEncodePacked` -- and Slot0 keeps sqrtPriceX96 in bits 0-159.
-    ///      TO BE CONFIRMED against the DEPLOYED PoolManager on a fork: source is not bytecode. Until then this contract
-    ///      proves the layout itself on every uncontested deployment (see PoolStateLayoutMismatch).
+    ///      Confirmed against the PoolManager deployed on Base, on a fork (`test_fork_anUncontestedDeploymentReadsBackItsOwnPrice`,
+    ///      `test_fork_aRacedPoolIsToleratedItsPriceCorrectedForFreeAndTheVaultGuardHolds`); every uncontested deployment
+    ///      proves the layout again on the PoolManager it runs against (see PoolStateLayoutMismatch).
     function extsload(bytes32 slot) external view returns (bytes32);
 }
 
 /// @title DarliDeployer
-/// @notice Everything that happens exactly once. In ONE transaction it creates USDarli, seals its minter set, and initialises
+/// @notice Everything that happens exactly once. In ONE transaction it creates USDarli, checks that every branch was built
+///         for exactly that token, seals its minter set, and initialises
 ///         the canonical USDarli / quote pool in Uniswap v4 at par, with no hook. After `deploy` this contract can do
 ///         nothing: it has no other function and the token's deployer rights are spent.
 ///         "At par" means the representable sqrtPriceX96 at or just below one: exact for an 18-decimal quote and for a
@@ -35,7 +38,7 @@ interface IPoolManagerInit {
 ///         attacker CAN initialise this very key first. Deployment therefore never depends on winning that race: a failed
 ///         `initialize` is tolerated and recorded in `poolPreInitialised`. The PRICE is enforced where it matters: the
 ///         liquidity vault must refuse deposits while the pool's price is outside its fixed range, and the price of a pool
-///         without liquidity can be moved by anyone at no cost. (To be confirmed against the real PoolManager on a fork.)
+///         without liquidity can be moved by anyone at no cost (both confirmed on the real PoolManager, on a fork of Base).
 ///         The core contracts never learn the pool's address; only this public record and the liquidity vault do.
 contract DarliDeployer {
     uint160 private constant Q96 = 2 ** 96;
@@ -59,6 +62,7 @@ contract DarliDeployer {
     error QuoteHasNoCode();
     error PoolStateLayoutMismatch();
     error PoolPriceOutOfRange();
+    error MinterNotBuiltForThisToken(address minter);
 
     event PoolWasPreInitialised();
     event Deployed(
@@ -97,6 +101,17 @@ contract DarliDeployer {
         deployed = true;
 
         token = new StableToken(name, symbol, address(this));
+        // Each branch was built before this transaction, with the token's predicted address as an immutable. Nothing
+        // else checks that prediction, and sealing a branch built for another address would make it a minter for ever
+        // of a token it does not mint. So every minter must name exactly this token before the set is closed; anything
+        // else -- no code, no `stable()`, another address -- reverts the whole deployment, which can then be retried.
+        // A one-time cost of one staticcall per branch; no operation after deployment reads anything more.
+        for (uint256 i = 0; i < minters.length; i++) {
+            (bool ok, bytes memory ret) = minters[i].staticcall(abi.encodeCall(IBranchManager.stable, ()));
+            if (!ok || ret.length != 32 || abi.decode(ret, (address)) != address(token)) {
+                revert MinterNotBuiltForThisToken(minters[i]);
+            }
+        }
         token.sealMinters(minters); // one shot: the minter set is closed for ever, for this contract too
 
         (address c0, address c1) = address(token) < quote ? (address(token), quote) : (quote, address(token));
@@ -118,8 +133,9 @@ contract DarliDeployer {
         // of the layout on the real PoolManager.
         if (!poolPreInitialised && observed != sqrtPriceX96) revert PoolStateLayoutMismatch();
         // On the raced path the price is the attacker's and cannot be compared with ours. It can at least be required to
-        // be a price v4 could hold at all. That is a weak filter -- an unrelated slot can hold such a number -- and the
-        // fork test named in SPEC 13 remains the real confirmation for this path.
+        // be a price v4 could hold at all. That is a weak filter -- an unrelated slot can hold such a number -- so the
+        // layout this path relies on is confirmed by a fork test that races the real PoolManager and reads back the
+        // attacker's price (`test_fork_aRacedPoolIsToleratedItsPriceCorrectedForFreeAndTheVaultGuardHolds`).
         if (observed < MIN_SQRT_PRICE || observed >= MAX_SQRT_PRICE) revert PoolPriceOutOfRange();
         targetSqrtPriceX96 = sqrtPriceX96;
         observedSqrtPriceX96 = observed;

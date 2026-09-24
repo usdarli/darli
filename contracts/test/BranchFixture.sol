@@ -12,15 +12,20 @@ import {IStabilityPool} from "../src/interfaces/IStabilityPool.sol";
 import {IBranchManager} from "../src/interfaces/IBranchManager.sol";
 import {IFrontendRegistry, ICollateralVault, ITroveNFT, IRateSortedList} from "../src/interfaces/ICore.sol";
 import {IStableToken} from "../src/interfaces/IStableToken.sol";
-import {MockCollateral, MockPriceFeed, MockStabilityPool} from "./mocks/BranchMocks.sol";
+import {StabilityPool} from "../src/core/StabilityPool.sol";
+import {CollateralRegistry} from "../src/core/CollateralRegistry.sol";
+import {BranchSettlement} from "../src/core/BranchSettlement.sol";
+import {ISettlementHooks} from "../src/interfaces/IBranchManager.sol";
+import {IBranchRedemption} from "../src/interfaces/IBranchManager.sol";
+import {MockCollateral, MockPriceFeed} from "./mocks/BranchMocks.sol";
 
-/// Deploys one branch exactly as `contracts/script/borrower_trace.py` configures the model's, at the real addresses the
+/// Deploys one branch exactly as `contracts/script/branch_trace.py` configures the model's, at the real addresses the
 /// deployment predicts (`vm.computeCreateAddress`), not placeholders.
 abstract contract BranchFixture is Test {
     uint256 constant E = 1e18;
     uint256 constant PCT = 1e16;
     uint256 constant START = 1_700_000_000;
-    uint256 constant N_ACCOUNTS = 9; // six users, two frontend payouts, the payout of untagged Troves
+    uint256 constant N_ACCOUNTS = 8; // six users, two frontend payouts
 
     StableToken stable;
     FrontendRegistry registry;
@@ -29,26 +34,37 @@ abstract contract BranchFixture is Test {
     CollateralVault vault;
     TroveNFT nft;
     RateSortedList list;
-    MockStabilityPool sp;
+    StabilityPool sp;
     BranchManager manager;
+    CollateralRegistry collRegistry;
+    BranchSettlement settlement;
     address escrow = makeAddr("InterestEscrow");
 
     function account(uint256 i) internal pure returns (address) {
         return address(uint160(0x1000 + i));
     }
 
+    // the redemption fee parameters of the trace (`branch_trace.py`): β is open (SPEC §0), 4 as in the pilot simulations;
+    // the pilot's initial base rate (R6)
+    uint256 constant BETA_WAD = E; // SPEC 2: β = 1
+    uint256 constant INITIAL_BASE_RATE = 10 * PCT;
+
     function deployBranch(uint256 minDebt, uint256 cap0, uint256 capCeiling, uint256 gasDeposit) internal {
         vm.warp(START);
         stable = new StableToken("USDarli", "USDarli", address(this));
-        registry = new FrontendRegistry(IStableToken(address(stable)), 3 * PCT, account(8));
+        registry = new FrontendRegistry(IStableToken(address(stable)), 3 * PCT);
         feed = new MockPriceFeed(2000 * E);
         weth = new MockCollateral();
         uint256 n = vm.getNonce(address(this));
-        address predicted = vm.computeCreateAddress(address(this), n + 4);
+        address predicted = vm.computeCreateAddress(address(this), n + 6);
+        IBranchRedemption[] memory branches = new IBranchRedemption[](1);
+        branches[0] = IBranchRedemption(predicted);
+        collRegistry = new CollateralRegistry(IStableToken(address(stable)), branches, BETA_WAD, INITIAL_BASE_RATE);
         vault = new CollateralVault(weth, predicted);
         nft = new TroveNFT(predicted, "Darli Trove (WETH)", "DTROVE-WETH");
         list = new RateSortedList(predicted);
-        sp = new MockStabilityPool(stable, IBranchManager(predicted));
+        sp = new StabilityPool(stable, weth, IBranchManager(predicted));
+        settlement = new BranchSettlement(ISettlementHooks(predicted));
         manager = new BranchManager(
             BranchConfig({
                 stable: IStableToken(address(stable)),
@@ -60,6 +76,8 @@ abstract contract BranchFixture is Test {
                 stabilityPool: IStabilityPool(address(sp)),
                 frontends: IFrontendRegistry(address(registry)),
                 escrow: escrow,
+                collateralRegistry: address(collRegistry),
+                settlement: address(settlement),
                 mcr: 110 * PCT,
                 ccr: 150 * PCT,
                 scr: 110 * PCT,
@@ -69,7 +87,11 @@ abstract contract BranchFixture is Test {
                 cap0: cap0,
                 capCeiling: capCeiling,
                 gasDeposit: gasDeposit,
-                spShare: 72 * PCT
+                spShare: 72 * PCT,
+                penSp: 5 * PCT,
+                penRedist: 10 * PCT,
+                liqBonus: PCT / 2,
+                liqBonusCap: 2 * E
             })
         );
         assertEq(address(manager), predicted, "the branch is not at the address its parts were built against");

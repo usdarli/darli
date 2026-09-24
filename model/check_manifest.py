@@ -25,14 +25,15 @@ REQUIRED = [
     "model/fuzz_oracle.py", "model/mutants.py", "model/pilot_sweep.py", "model/beta_pilot_compare.py",
     "model/figures.py", "model/check_figures.py", "model/spec_check.py", "model/check_manifest.py", "model/study_figures.py",
     "model/results/pilot_seeds.jsonl", "model/results/pilot_summary.jsonl", "model/results/beta_pilot_compare.jsonl",
-    "model/results/figures.json",
+    "model/results/figures.json", "model/oracle_history.py", "model/base_gas_history.py",
+    "model/results/oracle_history.jsonl", "model/results/base_gas_history.jsonl",
     "docs/SPEC.md",
     "contracts/foundry.toml", "contracts/remappings.txt", "contracts/script/export_vectors.py",
     "contracts/script/check_test_count.py",
-    "contracts/test/vectors/math.json", "contracts/test/vectors/sorted_list.json", "contracts/test/vectors/borrower_trace.json",
-    "contracts/script/borrower_trace.py",
+    "contracts/test/vectors/math.json", "contracts/test/vectors/sorted_list.json", "contracts/test/vectors/branch_trace.json",
+    "contracts/test/vectors/stability_pool.json", "contracts/script/branch_trace.py", "contracts/script/sp_trace.py",
 ]
-SUBMODULES = ["contracts/lib/forge-std", "contracts/lib/openzeppelin-contracts"]
+SUBMODULES = ["contracts/lib/forge-std", "contracts/lib/openzeppelin-contracts", "contracts/lib/v4-core"]
 
 FILE_ROW = re.compile(r"\| ((?:model|docs|contracts)/[\w./-]+) \| `([0-9a-f]{16})` \|")
 SUB_ROW = re.compile(r"\| (contracts/lib/[\w.-]+) \| `([0-9a-f]{40})` \| ([^|]*?) \|")
@@ -43,12 +44,14 @@ def digest(path):
 
 
 def required_files():
-    """REQUIRED plus every Solidity source and test: the whole input of `forge test`."""
+    """REQUIRED plus every Solidity source and test (the whole input of `forge test`), every vector file and every script
+    that writes one: a new trace generator is covered the day it is added, not the day someone remembers to list it."""
     extra = []
-    for root in ("contracts/src", "contracts/test"):
+    for root, suffix in (("contracts/src", ".sol"), ("contracts/test", ".sol"), ("contracts/test/vectors", ".json"),
+                         ("contracts/script", ".py"), ("contracts/script", ".sol"), ("contracts/fork", ".sol")):
         for dirpath, _, names in os.walk(os.path.join("..", root)):
             for n in sorted(names):
-                if n.endswith(".sol"):
+                if n.endswith(suffix):
                     extra.append(os.path.relpath(os.path.join(dirpath, n), "..").replace(os.sep, "/"))
     return sorted(set(REQUIRED) | set(extra))
 

@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 
 import {Test, console2} from "forge-std/Test.sol";
 import {SingleSourcePriceFeed} from "../src/oracle/SingleSourcePriceFeed.sol";
+import {DualSourcePriceFeed} from "../src/oracle/DualSourcePriceFeed.sol";
 import {IFeedSource, ISequencerGuard} from "../src/interfaces/IPriceFeed.sol";
 import {PriceStatus} from "../src/Types.sol";
 import {MockSource, NestedProxySource, MockSequencer, Heuristic64Feed} from "./mocks/OracleMocks.sol";
@@ -122,13 +123,13 @@ contract OracleFeedTest is Test {
 
     function test_constructorRejectsUnhealthyFeedAndBadConfig() public {
         MockSource bad = new MockSource(0, 0);
-        vm.expectRevert(SingleSourcePriceFeed.FeedUnhealthyAtCreation.selector);
+        vm.expectRevert(DualSourcePriceFeed.FeedUnhealthyAtCreation.selector);
         new SingleSourcePriceFeed(bad, ISequencerGuard(address(0)), STALE, TIMEOUT, GRACE, 200_000, 50_000);
-        vm.expectRevert(SingleSourcePriceFeed.BadConfig.selector);
+        vm.expectRevert(DualSourcePriceFeed.BadConfig.selector);
         new SingleSourcePriceFeed(src, ISequencerGuard(address(0)), TIMEOUT, TIMEOUT, GRACE, 200_000, 50_000);
         // a stipend below the honest cost of the source is caught at birth, not in production
         MockSource hungry = new MockSource(PRICE, 300_000);
-        vm.expectRevert(SingleSourcePriceFeed.FeedUnhealthyAtCreation.selector);
+        vm.expectRevert(DualSourcePriceFeed.FeedUnhealthyAtCreation.selector);
         new SingleSourcePriceFeed(hungry, ISequencerGuard(address(0)), STALE, TIMEOUT, GRACE, 200_000, 50_000);
     }
 

@@ -5,6 +5,7 @@ Each scenario checks the invariants before and after every step where it matters
 import os as _os
 _os.chdir(_os.path.dirname(_os.path.abspath(__file__)))
 import random
+from fractions import Fraction
 import sys
 import traceback
 
@@ -191,7 +192,7 @@ def scenario_05_frontend_long_untouched():
     b.apply_pending_debt(ta)
     assert fe.claimable["A2"] > 0
     b.apply_pending_debt(tb)                   # every trove touched at the same instant
-    for who in ("FE1", "A", "A2", "B", fe.INCENTIVES):
+    for who in ("FE1", "A", "A2", "B"):
         fe.claim(who)
     check_invariants(s)
     dust = s.stable.bal[fe.ADDR]
@@ -444,11 +445,19 @@ def scenario_13_extra_checks():
         fund(weth, f"w{i}", 1000 * E)
         b.open_trove(f"w{i}", 1000 * E, 100_000 * E, (5 + i) * PCT)
     supply0 = s.stable.supply
-    s.stable.transfer("w1", "w0", 5_000 * E)                   # first trove's debt includes its upfront fee
+    for i in range(1, 5):                                      # the redeemer holds everything it asks for (SPEC 10.5)
+        s.stable.transfer(f"w{i}", "w0", s.stable.bal[f"w{i}"])
     red, _ = s.redeem("w0", 450_000 * E, max_iter=1)          # asks for 90% of supply, one trove only
     assert red < 110_000 * E, "max_iter=1 must cap the redemption at one trove"
     assert s.base_rate <= red * WAD // supply0 + 1, "stored baseRate must follow the amount actually redeemed"
     check_invariants(s)
+    # (c) SPEC 10.5: a request above the redeemer's balance is refused as a whole, even when the one Trove that
+    # max_iter allows holds less debt than the balance, so the burn alone would succeed
+    base, bal = s.base_rate, s.stable.bal["w0"]
+    assert b.debt_now(b.redemption_order()[0]) < bal
+    expect_revert(s.redeem, "w0", bal + 1, max_iter=1)
+    assert (s.base_rate, s.stable.bal["w0"]) == (base, bal), "a refused redemption must leave no trace"
+    s.redeem("w0", bal, max_iter=1)                            # exactly the balance is allowed
     return (f"one offset can move the scale by {jump}; deposit stranded after two scale changes = "
             f"{stranded} wei; baseRate after partial redeem = {s.base_rate / 1e16:.2f}%")
 
@@ -679,7 +688,9 @@ def scenario_19_lp_vault_fee_accounting():
     v.withdraw("early", 1_000)                                 # full exit
     owed = v.pending("early")
     assert owed[:2] == (300 + 100, 9 + 10) and 69_990 <= owed[2] <= 70_000, owed   # still claimable after the exit
-    assert v.claim("early") == owed and v.pending("early") == (0, 0, 0)
+    # V7: one token at a time; a claim of one leaves the others owed, to the wei
+    assert v.claim("early", 1) == owed[1] and v.pending("early") == (owed[0], 0, owed[2])
+    assert v.claim("early") == (owed[0], 0, owed[2]) and v.pending("early") == (0, 0, 0)
     assert v.pending("late")[:2] == (900, 90)
     assert v.principal_out["early"] == 1_000, "principal is tracked apart from fees"
     # enter with 99% of the shares right before a funding, leave right after
@@ -1449,6 +1460,329 @@ def scenario_31_redemption_order_is_total():
         assert all(b.debt_now(b.troves[i]) == d for i, d in before.items() if i != tid), "a Trove out of turn was touched"
         check_invariants(s, f"31 after {tid}")
     return f"order {expected} after Trove 1 moved onto the lowest rate; redemption walked it Trove by Trove"
+
+
+def scenario_32_untagged_share_returns_to_the_borrower():
+    """SPEC V2: a frontend keeps its share of the Troves it brought; a Trove opened without a frontend (a command-line or
+    self-written client) has its whole share credited to its owner. Expected credits are computed here from each Trove's
+    own fee and interest -- floor(amount x 3 %), then the kickback split -- not read back from the registry."""
+    clock, s, b, weth, _ = setup()
+    fe = s.frontends
+    fid = fe.register("FE", 40 * PCT)
+    for who in ("tagged", "cli"):
+        fund(weth, who, 100 * E)
+    tt = b.open_trove("tagged", 100 * E, 50_000 * E, 10 * PCT, frontend=fid)
+    tc = b.open_trove("cli", 100 * E, 50_000 * E, 10 * PCT)                 # frontend 0: no frontend brought it
+    fee_t, fee_c = b.troves[tt].debt - 50_000 * E, b.troves[tc].debt - 50_000 * E
+    clock.warp(90 * DAY)
+    d_t, d_c = b.troves[tt].debt, b.troves[tc].debt
+    b.apply_pending_debt(tt)
+    b.apply_pending_debt(tc)
+    a_t, a_c = b.troves[tt].debt - d_t, b.troves[tc].debt - d_c              # each Trove's own interest (step B)
+
+    def share(x):
+        return x * 3 // 100                                                     # floor(x x 3 %)
+    # a credit is floored at each touch (the fee at opening, the interest at the next step B), never on a summed amount
+    kick = lambda r: r * 40 // 100
+    exp_cli = share(fee_c) + share(a_c)
+    exp_owner_t = kick(share(fee_t)) + kick(share(a_t))
+    exp_fe = share(fee_t) - kick(share(fee_t)) + share(a_t) - kick(share(a_t))
+    assert fe.claimable["cli"] == exp_cli, "V2: an untagged Trove's share must go to its owner"
+    assert fe.claimable["tagged"] == exp_owner_t, "V2: the kickback of a tagged Trove"
+    assert fe.claimable["FE"] == exp_fe, "V2: a frontend keeps its share of the Troves it brought"
+    assert exp_cli > 0 and exp_fe > 0
+    assert sum(fe.claimable.values()) == fe.total_credited, "every credit has an owner: nothing goes to an ownerless account"
+    for who in ("cli", "tagged", "FE"):
+        fe.claim(who)
+    check_invariants(s)
+    return f"untagged owner credited {exp_cli / E:.4f}; tagged: owner {exp_owner_t / E:.4f}, frontend {exp_fe / E:.4f}"
+
+
+def scenario_33_zombie_borrowing_back_rejoins_the_queue():
+    """SPEC B4 / R2: a Trove redeemed to exactly zero is a Zombie that no pointer tracks. If it borrows back above the
+    minimum -- through `adjust_trove` as well as `borrow` -- it must be Active again and redeemed before a Trove paying a
+    higher rate. Expectation from the rule: its rate (1 %) is lower than the other Trove's (5 %), so a redemption smaller
+    than its debt must come entirely out of it."""
+    out = []
+    for path in ("adjust_trove", "borrow"):
+        clock, s, b, weth, feed = setup()
+        for who in ("z", "o"):
+            fund(weth, who, 100 * E)
+        tz = b.open_trove("z", 20 * E, 10_000 * E, 1 * PCT)
+        to = b.open_trove("o", 80 * E, 30_000 * E, 5 * PCT)
+        s.redeem("o", b.debt_now(b.troves[tz]))                 # z redeemed to exactly zero
+        assert b.troves[tz].status == ZOMBIE and b.last_zombie == 0, "a Trove redeemed to zero is an untracked Zombie"
+        if path == "adjust_trove":
+            b.adjust_trove(tz, 0, 15_000 * E)
+        else:
+            b.borrow(tz, 15_000 * E)
+        assert b.troves[tz].status == ACTIVE, f"B4: borrowing back through {path} must reactivate the Zombie"
+        z0, o0 = b.debt_now(b.troves[tz]), b.debt_now(b.troves[to])
+        s.redeem("o", 2_000 * E)
+        assert b.debt_now(b.troves[tz]) == z0 - 2_000 * E and b.debt_now(b.troves[to]) == o0, \
+            f"R2: after {path} the lower-rate Trove must be redeemed first"
+        check_invariants(s, f"33 {path}")
+        out.append(path)
+    return "re-borrowed Zombie back in the queue via " + " and ".join(out)
+
+
+def scenario_34_redemption_price_never_below_the_price():
+    """SPEC R4: the branch converts debt at max(price, redemptionPrice). (a) A feed whose redemption price is below its
+    price: a Trove at 105 % at the price but under 100 % at the redemption price is redeemed in full at the price, and
+    keeps the rest of its collateral; converted at the feed's lower price it would owe more than it holds. (b) A redemption
+    price above the price is used as it is. Expectations from the rule: out = R / conversion price, less the fee
+    floor + R / supply (base rate 0, beta 1)."""
+    clock, s, b, weth, feed = setup()
+    fund(weth, "o", 1000 * E)
+    fund(weth, "w", 100 * E)
+    to = b.open_trove("o", 400 * E, 50_000 * E, 5 * PCT)
+    tw = b.open_trove("w", 12 * E, 20_000 * E, 1 * PCT)          # the head of the queue, about 120 %
+    feed.price = 1760 * E                                          # the head at about 105 %, the branch far above SCR
+    feed.redemption_price = 1600 * E                               # ... and under 100 % at the feed's redemption price
+    w = b.troves[tw]
+    d, c = b.debt_now(w), b.coll_now(w)
+    assert c * feed.price // d >= WAD > c * feed.redemption_price // d
+    supply, got = s.stable.supply, weth.bal["o"]
+    s.redeem("o", d, max_iter=1)
+    rate = WAD // 200 + d * WAD * WAD // (supply * WAD)
+    out = d * WAD // (1760 * E)
+    to_redeemer = out - out * rate // WAD
+    assert weth.bal["o"] - got == to_redeemer, "R4: a redemption price below the price must be raised to the price"
+    assert w.debt == 0 and w.coll == c - to_redeemer > 0, "R4: the Trove keeps what the conversion at the price leaves"
+    # (b) a redemption price above the price converts as it is
+    feed.redemption_price = 1900 * E
+    o0, supply, got = b.coll_now(b.troves[to]), s.stable.supply, weth.bal["o"]
+    decayed = s.base_rate                                          # same block: no decay since the last redemption
+    s.redeem("o", 3_000 * E, max_iter=5)
+    rate = min(WAD // 200 + min(decayed + 3_000 * E * WAD * WAD // (supply * WAD), WAD), WAD)
+    out = 3_000 * E * WAD // (1900 * E)
+    assert weth.bal["o"] - got == out - out * rate // WAD, "R4: a higher redemption price is used as it is"
+    assert o0 - b.coll_now(b.troves[to]) == out - out * rate // WAD, "R7: the fee stays in the Trove"
+    check_invariants(s, "34")
+    return "redemption price 1,600 under a price of 1,760 converted at 1,760; 1,900 above it used as it is"
+
+
+def scenario_35_liquidation_surplus_is_not_held_by_settlement():
+    """SPEC L3 / X11: an owner has the surplus of a liquidated Trove and, after a shutdown, the surplus of a settled one.
+    Until phase 1 ends only the settlement surplus waits; the liquidation surplus is his at once. Expectations from the
+    rules: liquidation surplus = coll - 0.5 % bonus - debt x 1.05 / price (the pool absorbs the whole debt); settlement
+    surplus = coll - ceil(debt / settlePrice), kept in full because no Trove is under water."""
+    clock, s, b, weth, feed = setup()
+    fund(weth, "a", 100 * E)
+    fund(weth, "b", 1000 * E)
+    t1 = b.open_trove("a", 20 * E, 20_000 * E, 5 * PCT)
+    t2 = b.open_trove("a", 40 * E, 20_000 * E, 5 * PCT)
+    t3 = b.open_trove("b", 400 * E, 60_000 * E, 5 * PCT)
+    b.sp.deposit("b", 30_000 * E)
+    d1, c1 = b.debt_now(b.troves[t1]), b.coll_now(b.troves[t1])
+    price = 108 * PCT * d1 // c1                                   # t1 at 108 %: between the pool's premium and MCR
+    feed.price = price
+    b.liquidate(t1, "keeper")
+    expected_liq = c1 - c1 * WAD // 200 // WAD - d1 * (WAD + 5 * PCT) // price
+    assert b.surplus["a"] == expected_liq > 0
+    feed.status = FAILED
+    b.poke_oracle()                                                # shutdown; the settlement price is the last good one
+    assert b.shutdown_at and b.settle_price == price
+    d2, c2 = b.debt_now(b.troves[t2]), b.coll_now(b.troves[t2])
+    b.settle_trove(t2, "keeper")
+    assert b.unsettled == 1, "t3 is still unsettled: phase 1 is not complete"
+    assert "phase 1" in expect_revert(b.claim_surplus, "a"), "both at once: refused while the settlement part waits"
+    assert "phase 1" in expect_revert(b.claim_settlement_surplus, "a")
+    got = weth.bal["a"]
+    assert b.claim_liquidation_surplus("a") == expected_liq and weth.bal["a"] - got == expected_liq, \
+        "L3: the liquidation surplus is claimable during phase 1"
+    b.settle_trove(t3, "keeper")
+    expected_settle = c2 - (d2 * WAD + price - 1) // price
+    assert b.claim_settlement_surplus("a") == expected_settle, "X11: kept in full when no Trove is under water"
+    assert b.claim_surplus("a") == 0, "nothing is paid twice"
+    check_invariants(s, "35")
+    return "liquidation surplus paid during phase 1; settlement surplus after it"
+
+
+def scenario_36_two_price_sources():
+    """SPEC O3, O7, O8: a primary feed and a pool source. Expected statuses and prices are written from the rules."""
+    from model import PoolSource, sqrt_price_at_tick, pool_twap_quote, pool_twap_price, MAX_TICK
+    out = []
+    DEV = 5 * PCT
+
+    def setup(pool_price=2010 * E):
+        clock = Clock()
+        s = System(clock)
+        weth = Token("WETH")
+        seq = Sequencer(clock)
+        src = Source(clock, 2000 * E)
+        pool = PoolSource(clock, pool_price)
+        feed = OracleFeed(clock, [src], [STALE], TIMEOUT, sequencer=seq, grace=GRACE, pool_source=pool,
+                          max_deviation=DEV)
+        b = s.create_branch("WETH", weth, feed, mcr=110 * PCT, ccr=150 * PCT, scr=110 * PCT,
+                            pen_sp=5 * PCT, pen_redist=10 * PCT, min_debt=2000 * E, debt_cap=10**7 * E)
+        fund(weth, "u", 1000 * E)
+        b.open_trove("u", 100 * E, 20_000 * E, 5 * PCT)
+        return clock, b, feed, src, pool
+
+    # (a) both answer and agree within MAX_DEVIATION: Valid at the PRIMARY's price
+    clock, b, feed, src, pool = setup()
+    assert feed.fetch() == (2000 * E, VALID)
+    pool.value = 2000 * E * (WAD + DEV) // WAD                    # exactly at the bound: still agreement
+    assert feed.fetch() == (2000 * E, VALID)
+    out.append("a: agreement -> the primary's price")
+    # (b) disagreement: PriceInvalid, and Failed only after it lasted a timeout with no Valid between
+    pool.value += 1
+    assert b.poke_oracle() == PRICE_INVALID and feed.disagree_since == clock.now
+    t0 = clock.now
+    for _ in range(3):
+        clock.warp(8 * HOUR - 1); src.push()
+        assert b.poke_oracle() == PRICE_INVALID and b.shutdown_at == 0
+    clock.warp(t0 + TIMEOUT - clock.now); src.push()
+    assert b.poke_oracle() == FAILED and b.shutdown_at == clock.now and b._shutdown_price() == 2000 * E
+    out.append("b: disagreement -> PriceInvalid, Failed after exactly a timeout at the last good price")
+    # (c) agreement before the timeout clears the disagreement; a new one starts a fresh clock
+    clock, b, feed, src, pool = setup()
+    pool.value = 2500 * E
+    assert b.poke_oracle() == PRICE_INVALID
+    clock.warp(20 * HOUR); src.push(); pool.value = 2010 * E
+    assert b.poke_oracle() == VALID and feed.disagree_since == 0
+    pool.value = 2500 * E; clock.warp(10 * HOUR); src.push()
+    assert b.poke_oracle() == PRICE_INVALID
+    clock.warp(TIMEOUT - 1); src.push()
+    assert b.poke_oracle() == PRICE_INVALID and b.shutdown_at == 0, "the second disagreement has its own clock"
+    out.append("c: a Valid in between resets the disagreement clock")
+    # (c2) a disagreement, or dead pools, a timeout long but with a sequencer outage inside: no Failed until the
+    # sequencer has been up a whole timeout (O3)
+    for kind in ("disagreement", "dead pools"):
+        clock, b, feed, src, pool = setup()
+        seq = feed.seq
+        if kind == "disagreement":
+            pool.value = 2500 * E
+        else:
+            src.push(); clock.warp(TIMEOUT)                        # the primary dead a timeout ...
+            pool.available = False                                # ... and the pools gone
+        assert b.poke_oracle() == PRICE_INVALID
+        t0 = clock.now
+        clock.warp(10 * HOUR); seq.set(False)
+        clock.warp(10 * HOUR); seq.set(True)
+        clock.warp(t0 + TIMEOUT + HOUR - clock.now)
+        if kind == "disagreement":
+            src.push()
+        assert b.poke_oracle() == PRICE_INVALID and b.shutdown_at == 0, f"{kind}: the sequencer was up for 5h only"
+        clock.warp(t0 + 20 * HOUR + TIMEOUT - clock.now)
+        if kind == "disagreement":
+            src.push()
+        assert b.poke_oracle() == FAILED, f"{kind}: Failed once the sequencer was up a whole timeout"
+    out.append("c2: a sequencer outage postpones Failed for a disagreement and for dead pools")
+    # (d) a primary that is only stale: PriceInvalid whatever the pools say; dead: the pools take over, no shutdown
+    clock, b, feed, src, pool = setup()
+    clock.warp(STALE + 1)
+    assert b.poke_oracle() == PRICE_INVALID, "a temporarily bad primary is never replaced by the pools"
+    clock.warp(TIMEOUT - STALE)                                   # the primary's answer is now older than the timeout
+    pool.value = 1500 * E                                         # the market moved; nobody cross-checks a dead primary
+    assert b.poke_oracle() == VALID and feed.last_good == 1500 * E and b.shutdown_at == 0
+    b.borrow(1, 100 * E)                                          # price-dependent operations go on, at the pools' price
+    out.append("d: dead primary -> Valid at the pools' price, the branch lives on")
+    # (e) ... until the pools are unavailable too: PriceInvalid, Failed once they were unavailable for a timeout
+    pool.available = False
+    assert b.poke_oracle() == PRICE_INVALID and feed.pool_invalid_since == clock.now
+    clock.warp(TIMEOUT - 1)
+    assert b.poke_oracle() == PRICE_INVALID and b.shutdown_at == 0
+    clock.warp(1)
+    assert b.poke_oracle() == FAILED and b._shutdown_price() == 1500 * E, "both dead: the last good price"
+    out.append("e: both dead a timeout -> Failed at the last good (pool) price")
+    # (f) pools unavailable for ever, primary healthy: Valid at the primary's price, no kill switch
+    clock, b, feed, src, pool = setup()
+    pool.available = False
+    for _ in range(4):
+        clock.warp(TIMEOUT); src.push()
+        assert b.poke_oracle() == VALID and b.shutdown_at == 0
+    out.append("f: dead pools and a live primary -> Valid, no shutdown")
+    # (g) a malformed primary: the fallback does not clear its marker; when it heals, the cross-check is back
+    clock, b, feed, src, pool = setup()
+    src.reverts = True
+    assert b.poke_oracle() == PRICE_INVALID
+    t_bad = feed.invalid_since
+    clock.warp(TIMEOUT)
+    assert b.poke_oracle() == VALID and feed.last_good == 2010 * E
+    clock.warp(HOUR)
+    assert b.poke_oracle() == VALID and feed.invalid_since == t_bad, "only a healthy primary clears its marker"
+    src.reverts = False; src.push(2000 * E); pool.value = 2400 * E
+    assert b.poke_oracle() == PRICE_INVALID and feed.invalid_since == 0, "a healed primary is cross-checked again"
+    out.append("g: fallback keeps the primary's marker; a healed primary is cross-checked again")
+
+    # (h) the pool arithmetic (O7), against values fixed outside the code
+    assert sqrt_price_at_tick(0) == 2**96
+    assert sqrt_price_at_tick(-MAX_TICK) == 4295128739                          # Uniswap's MIN_SQRT_PRICE
+    assert sqrt_price_at_tick(MAX_TICK) == 1461446703485210103287273052203988822378723970342   # MAX_SQRT_PRICE
+    live = 4105245015388717284298858             # slot0 of the Base WETH/USDC 0.05 % pool at tick -197367
+    assert sqrt_price_at_tick(-197367) <= live < sqrt_price_at_tick(-197366)
+    # the mean tick rounds toward minus infinity: -7 over 2 seconds is tick -4 (WETH as token0)
+    q_floor = pool_twap_quote(-7, 1 << 100, 2, True, 6)
+    assert q_floor == pool_twap_quote(-8, 1 << 100, 2, True, 6), "floor(-3.5) = -4"
+    # WETH as token1: the tick is negated, so the same market reads the same price
+    assert pool_twap_quote(197367 * 1800, 1 << 100, 1800, False, 6)[0] == pool_twap_quote(-197367 * 1800, 1 << 100, 1800, True, 6)[0]
+    # a price near 2,700 dollars from the live tick, 6-decimal stablecoin, within the tick's width
+    p = pool_twap_quote(-197367 * 1800, 1 << 100, 1800, True, 6)[0]
+    exact = Fraction(sqrt_price_at_tick(-197367) ** 2, 2**192) * 10**12 * WAD
+    assert abs(p - exact) <= 1 and 2_600 * E < p < 2_800 * E
+    # weights: a deep pool and a thin one far away; the mean stays within 0.01 % of the deep pool
+    deep = pool_twap_quote(-197367 * 1800, 1 << 90, 1800, True, 6)
+    thin = pool_twap_quote(-190000 * 1800, 1 << 125, 1800, True, 6)       # a pool ~2x off, with ~2^35x less liquidity
+    mixed = pool_twap_price([deep, thin], 0)
+    assert deep[1] > 10**6 * thin[1] and mixed == deep[0], "a thin pool must weigh nothing"
+    # a pool drained to an extreme tick for the whole window: its time-weighted liquidity is ~1, its weight a few
+    # dollars, its price ~1e38 dollars. A mean of prices would follow it; the weighted median does not move
+    drained = pool_twap_quote(887_000 * 1800, (1800 << 128) // 3, 1800, True, 18)
+    assert 0 < drained[1] < 10**21 and drained[0] > 10**55
+    assert pool_twap_price([deep, drained], 0) == deep[0], "O7: an extreme price with no liquidity moves nothing"
+    mean = (deep[0] * deep[1] + drained[0] * drained[1]) // (deep[1] + drained[1])
+    assert mean > 10**6 * deep[0], "... where a mean of prices would have been moved a millionfold"
+    # the median: pools holding less than half the weight cannot move it; weights decide, not the count of pools
+    a, b_, c = (2000 * E, 3), (2100 * E, 3), (9000 * E, 5)
+    assert pool_twap_price([a, b_, c], 0) == 2100 * E                   # cumulative 3, 6 >= 11/2
+    assert pool_twap_price([c, a, (2100 * E, 1)], 0) == 9000 * E        # 3, 4, 9: the heavy pool is the median
+    assert pool_twap_price([(3, 1), (1, 1), (2, 1), (4, 1)], 0) == 2    # sorted first; exactly half reached at 2
+    assert pool_twap_price([(5, 2), (1, 1), (9, 1)], 0) == 5            # 1, 3 >= 4/2: the lower of an exact split
+    assert pool_twap_price([deep, thin], deep[1] + thin[1] + 1) == 0, "below MIN_DEPTH: unavailable"
+    assert pool_twap_price([None, None], 0) == 0
+    out.append("h: tick maths, floor, orientation, liquidity weights, depth floor")
+    return "; ".join(out)
+
+
+def scenario_37_the_reference_price_never_waits_for_the_feed():
+    """SPEC X1: a shutdown while the feed is in a temporary state fixes the reference price at once, at the last good
+    price. Settlement then goes on whatever the feed does afterwards: stays broken for ever, or recovers at another
+    price. The expected contributions are computed here from the debt and that price."""
+    from model import OracleFeed, Source, Sequencer, DUST_THRESHOLD
+    out = []
+    for after in ("broken for ever", "recovers elsewhere"):
+        clock = Clock()
+        s = System(clock)
+        weth = Token("WETH")
+        seq = Sequencer(clock)
+        src = Source(clock, 2000 * E)
+        feed = OracleFeed(clock, [src], [3 * HOUR], 24 * HOUR, sequencer=seq, grace=HOUR)
+        b = s.create_branch("WETH", weth, feed, mcr=110 * PCT, ccr=150 * PCT, scr=110 * PCT, pen_sp=5 * PCT,
+                            pen_redist=10 * PCT, min_debt=2000 * E, debt_cap=10**8 * E)
+        for who, coll, debt in (("a", 20, 20_000), ("c", 100, 50_000)):
+            fund(weth, who, coll * E)
+            b.open_trove(who, coll * E, debt * E, 5 * PCT)
+        assert b.poke_oracle() == VALID and feed.last_good == 2000 * E
+        # bad debt below the dust threshold at each liquidation, adding up to it later (state set directly: the
+        # arithmetic of getting there is the subject of other scenarios), then the sequencer goes down
+        b.bad_debt = DUST_THRESHOLD
+        seq.set(False)
+        b.trigger_shutdown()
+        assert b.shutdown_at == clock.now and not b.oracle_failed, "a shutdown by the rules, in a temporary oracle state"
+        assert b.settle_price == 2000 * E, "X1: fixed at once, at the last good price"
+        if after == "broken for ever":
+            src.reverts = True                                   # and the sequencer never comes back
+        else:
+            seq.set(True); clock.warp(2 * HOUR); src.push(1500 * E)
+            assert feed.fetch()[1] == VALID                      # the feed is healthy again, at another price
+        clock.warp(DAY)
+        debt = b.debt_now(b.troves[1])
+        r = b.settle_trove(1, "keeper")
+        assert r["contribution"] == -(-debt * E // (2000 * E)), f"{after}: settled at the price fixed at shutdown"
+        out.append(f"{after}: settled at the last good price")
+    return "; ".join(out)
 
 
 SCENARIOS = [v for k, v in sorted(globals().items()) if k.startswith("scenario_")]
