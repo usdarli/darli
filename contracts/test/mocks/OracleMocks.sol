@@ -113,3 +113,107 @@ contract Heuristic64Feed {
         }
     }
 }
+
+/// The pool source as the feed sees it: (price, now), 0 when unavailable; or a revert, or a read that burns its stipend.
+contract MockPoolSource is IFeedSource {
+    uint256 public value;
+    bool public available = true;
+    uint256 public mode; // 0 ok, 1 revert, 2 burn every gas unit it is given
+
+    constructor(uint256 v) {
+        value = v;
+    }
+
+    function setValue(uint256 v) external {
+        value = v;
+    }
+
+    function setAvailable(bool on) external {
+        available = on;
+    }
+
+    function setMode(uint256 m) external {
+        mode = m;
+    }
+
+    function read() external view returns (int256, uint256) {
+        if (mode == 1) revert("pools down");
+        if (mode == 2) {
+            while (true) {}
+        }
+        return (available ? int256(value) : int256(0), block.timestamp);
+    }
+}
+
+contract MockDecimals {
+    uint8 public immutable decimals;
+
+    constructor(uint8 d) {
+        decimals = d;
+    }
+}
+
+/// A concentrated-liquidity pool's oracle surface (Uniswap v3 / Aerodrome Slipstream): token0/token1, slot0,
+/// observations and observe. The test sets the two cumulative readings the window spans and the last observation time.
+contract MockV3Pool {
+    address public token0;
+    address public token1;
+    int56 public tcAgo;
+    int56 public tcNow;
+    uint160 public splAgo;
+    uint160 public splNow;
+    uint32 public lastObservation;
+    uint256 public mode; // 0 ok, 1 revert, 2 burn all gas, 3 a short answer
+
+    constructor(address t0, address t1) {
+        (token0, token1) = (t0, t1);
+        lastObservation = uint32(block.timestamp);
+    }
+
+    /// A pool that sat at `tick` with liquidity `liq` for the whole `window`.
+    function setSteady(int24 tick, uint128 liq, uint32 window) external {
+        tcAgo = 0;
+        tcNow = int56(tick) * int56(uint56(window));
+        splAgo = 0;
+        splNow = uint160((uint256(window) << 128) / liq);
+        lastObservation = uint32(block.timestamp);
+    }
+
+    function setLastObservation(uint32 t) external {
+        lastObservation = t;
+    }
+
+    function setMode(uint256 m) external {
+        mode = m;
+    }
+
+    function _misbehave() internal view {
+        if (mode == 1) revert("pool");
+        if (mode == 2) {
+            while (true) {}
+        }
+        if (mode == 3) {
+            assembly {
+                return(0, 0x20)
+            }
+        }
+    }
+
+    function slot0() external view returns (uint160, int24, uint16, uint16, uint16, uint8, bool) {
+        _misbehave();
+        return (0, 0, 7, 10, 10, 0, true);
+    }
+
+    function observations(uint256 i) external view returns (uint32, int56, uint160, bool) {
+        _misbehave();
+        require(i == 7, "index");
+        return (lastObservation, tcNow, splNow, true);
+    }
+
+    function observe(uint32[] calldata) external view returns (int56[] memory tc, uint160[] memory spl) {
+        _misbehave();
+        tc = new int56[](2);
+        spl = new uint160[](2);
+        (tc[0], tc[1], spl[0], spl[1]) = (tcAgo, tcNow, splAgo, splNow);
+    }
+}

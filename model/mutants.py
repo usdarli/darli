@@ -42,11 +42,11 @@ MUTANTS = {
     "M11 oracle: Failed allowed without the sequencer having been up for TIMEOUT": (
         "        can_fail = self._sequencer_ok_for(self.timeout)", "        can_fail = True"),
     "M12 oracle: a healthy observation does not clear the malformed marker": (
-        "        self.last_good, self.last_valid_at, self.invalid_since = price, now, 0",
-        "        self.last_good, self.last_valid_at = price, now"),
+        "                primary = \"healthy\"\n                self.invalid_since = 0",
+        "                primary = \"healthy\""),
     "M13 oracle: no gas guard on the source call": (
-        "combine=\"single\", max_skew=None, gas_mode=\"stipend\", feed_gas_limit=200_000):",
-        "combine=\"single\", max_skew=None, gas_mode=\"none\", feed_gas_limit=200_000):"),
+        "combine=\"single\", max_skew=None, gas_mode=\"stipend\", feed_gas_limit=200_000,",
+        "combine=\"single\", max_skew=None, gas_mode=\"none\", feed_gas_limit=200_000,"),
     "M14 oracle: timestamp in the future accepted as fresh": (
         "        if value <= 0 or updated_at > self.clock.now:        # non-positive value or timestamp in the future",
         "        if value <= 0:"),
@@ -117,6 +117,39 @@ MUTANTS = {
         "        require(not self.gross_of[who] or self.surplus_keep is not None, \"phase 1\")\n        amt = self.surplus[who]\n        self.surplus[who] = 0\n        self._coll_out(who, amt)"),
     "M49 a claim of one vault token empties every token's books (SPEC V7)": (
         "        out = self.owed[who][k]\n        self.owed[who][k] = 0", "        out = self.owed[who][k]\n        self.owed[who] = [0, 0, 0]"),
+    "M50 oracle: no fallback, a dead primary never hands over to the pool source (O8)": (
+        "            if pool_ok:\n                return self._valid(pool[1], now)", "            if False:\n                return self._valid(pool[1], now)"),
+    "M51 oracle: no cross-check, a healthy primary is taken whatever the pools say (O8)": (
+        "            if pool_ok and self._disagree(price, pool[1]):", "            if False and self._disagree(price, pool[1]):"),
+    "M52 oracle: a dead pool source shuts the branch down although the primary is healthy (O3)": (
+        "            return self._valid(price, now)\n        if primary == \"dead\":",
+        "            if pool_dead and self.pool_source is not None:\n                return self.last_good, FAILED\n            return self._valid(price, now)\n        if primary == \"dead\":"),
+    "M53 oracle: the pools replace a primary that is only temporarily bad (O8)": (
+        "        if primary == \"dead\":\n            if pool_ok:", "        if primary in (\"dead\", \"temp\"):\n            if pool_ok:"),
+    "M54 oracle: a disagreement fails at once instead of after a timeout (O3)": (
+        "                elif now - self.disagree_since >= self.timeout and can_fail:\n                    return self.last_good, FAILED",
+        "                if can_fail:\n                    return self.last_good, FAILED"),
+    "M55 pool source: every pool weighs the same instead of its liquidity (O7)": (
+        "        acc += w\n        if 2 * acc >= total:", "        acc += total // len(quotes)\n        if 2 * acc >= total:"),
+    "M61 pool source: the liquidity-weighted mean of prices instead of the median (O7)": (
+        "    acc = 0\n    for p, w in sorted(quotes, key=lambda q: q[0]):",
+        "    return sum(p * w for p, w in quotes) // total\n    acc = 0\n    for p, w in sorted(quotes, key=lambda q: q[0]):"),
+    "M56 pool source: the mean tick rounds toward zero instead of minus infinity (O7)": (
+        "    t = tick_delta // window                                # floor, toward minus infinity",
+        "    t = -((-tick_delta) // window) if tick_delta < 0 else tick_delta // window"),
+    "M57 oracle: a fallback Valid clears the primary's malformed marker (O8)": (
+        "        self.last_good, self.last_valid_at, self.disagree_since = price, now, 0",
+        "        self.last_good, self.last_valid_at, self.disagree_since, self.invalid_since = price, now, 0, 0"),
+    "M58 oracle: the sources may not differ by exactly MAX_DEVIATION (O8)": (
+        "        return max(a, b) * WAD > min(a, b) * (WAD + self.max_deviation)",
+        "        return max(a, b) * WAD >= min(a, b) * (WAD + self.max_deviation)"),
+    "M59 oracle: a lasting disagreement fails without the sequencer having been up a timeout (O3)": (
+        "                elif now - self.disagree_since >= self.timeout and can_fail:",
+        "                elif now - self.disagree_since >= self.timeout:"),
+    "M62 pool source: the median takes the upper middle of an exact half split (O7)": (
+        "        if 2 * acc >= total:\n            return p", "        if 2 * acc > total:\n            return p"),
+    "M63 pool source: the median is taken in construction order, unsorted (O7)": (
+        "    for p, w in sorted(quotes, key=lambda q: q[0]):", "    for p, w in quotes:"),
     "M47 a redemption price below the price is used for the conversion as it is": (
         "        redemption_price = max(redemption_price or price, price)", "        redemption_price = redemption_price or price"),
 }

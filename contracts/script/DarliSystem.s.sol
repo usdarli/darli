@@ -320,7 +320,7 @@ contract DeployDarli is Script, DarliSystemBuild {
         p.branches = new BranchParams[](1);
         p.branches[0] = BranchParams({
             collToken: IERC20(0x4200000000000000000000000000000000000006), // WETH on Base
-            feed: IPriceFeed(vm.envAddress("WETH_FEED")), // a SingleSourcePriceFeed, its stipend and thresholds open (SPEC 13)
+            feed: IPriceFeed(vm.envAddress("WETH_FEED")), // a DualSourcePriceFeed (O8); stipends, thresholds, pools open (SPEC 13)
             mcr: 110 * PCT,
             ccr: 150 * PCT,
             scr: 110 * PCT,

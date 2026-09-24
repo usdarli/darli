@@ -12,7 +12,7 @@ An immutable, ETH-backed stablecoin protocol for Base: borrowers set their own i
 | `model/` | Executable reference model (Python, standard library only, exact integer arithmetic): scenarios, two fuzzers with asserted coverage floors, mutants that the tests must kill, an agent-based simulator |
 | `RELEASING.md` | Release checklist: what must be green, enabled and decided before a version is announced |
 | `AGENTS.md` | Operating rules for AI coding agents and contributors: what must never change, how a rule change is made, what looks like a bug but is not |
-| `contracts/` | Solidity (Foundry): math libraries checked bit-for-bit against the model, the stablecoin, the oracle adapter, the one-shot deployer, the live branch -- borrowing, the redemption queue, the Stability Pool, liquidation and redistribution, redemption and its routing across branches -- the settlement after a shutdown, a contract of its own, and the revenue router and DARLI staking, all replayed against model-driven traces wei for wei; the liquidity vault on Uniswap v4; and the build of a whole system at predicted addresses, checked link by link before it is sealed (`script/DarliSystem.s.sol`), with an end-to-end test of its life. `make fork` checks what needs Base itself -- the PoolManager's storage layout, the pool race, the vault on a real pool, the live price feed -- on a fork at a pinned block. The branch contract is within a few hundred bytes of the 24 KB limit |
+| `contracts/` | Solidity (Foundry): math libraries checked bit-for-bit against the model, the stablecoin, the two-source oracle (an external feed backed by a pool source), the one-shot deployer, the live branch -- borrowing, the redemption queue, the Stability Pool, liquidation and redistribution, redemption and its routing across branches -- the settlement after a shutdown, a contract of its own, and the revenue router and DARLI staking, all replayed against model-driven traces wei for wei; the liquidity vault on Uniswap v4; and the build of a whole system at predicted addresses, checked link by link before it is sealed (`script/DarliSystem.s.sol`), with an end-to-end test of its life. `make fork` checks what needs Base itself -- the PoolManager's storage layout, the pool race, the vault on a real pool, the live price feed -- on a fork at a pinned block. The branch contract is within a few hundred bytes of the 24 KB limit |
 
 ## What Darli is
 
@@ -51,7 +51,7 @@ An immutable, ETH-backed stablecoin protocol for Base: borrowers set their own i
 
 ## Open items before implementation
 
-See `docs/SPEC.md` §13: the gas deposit amount, the oracle's gas stipend and thresholds, DARLI supply and distribution, persistent failure in the shared settlement path, and legal review before any deployment.
+See `docs/SPEC.md` §13: the gas deposit amount, the oracle's gas stipends, thresholds and pool set, DARLI supply and distribution, persistent failure in the shared settlement path, and legal review before any deployment.
 
 ## Comparison with similar protocols
 

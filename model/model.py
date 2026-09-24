@@ -165,6 +165,81 @@ class Source:
         return self.value, self.updated_at
 
 
+class PoolSource:
+    """The pool source of SPEC O7 as the feed sees it: a price, or 0 when unavailable (fewer than MIN_DEPTH of weight
+    among fresh, readable pools). How that price is computed from the pools is `pool_twap_price` below."""
+
+    def __init__(self, clock, value, gas_cost=150_000):
+        self.clock, self.value, self.available = clock, value, True
+        self.reverts = False
+        self.burns_all_gas = False
+        self.gas_cost = gas_cost
+        self.nested = False
+
+    def read(self, gas):
+        if self.burns_all_gas or gas < self.gas_cost:
+            raise OutOfGas()
+        if self.reverts:
+            raise SourceRevert()
+        return (self.value if self.available else 0), self.clock.now
+
+
+# --- SPEC O7: the pool source's arithmetic, exactly as the contracts do it ------------------------------------------ #
+MAX_TICK = 887272
+_TICK_FACTORS = [(0x2, 0xfff97272373d413259a46990580e213a), (0x4, 0xfff2e50f5f656932ef12357cf3c7fdcc),
+                 (0x8, 0xffe5caca7e10e4e61c3624eaa0941cd0), (0x10, 0xffcb9843d60f6159c9db58835c926644),
+                 (0x20, 0xff973b41fa98c081472e6896dfb254c0), (0x40, 0xff2ea16466c96a3843ec78b326b52861),
+                 (0x80, 0xfe5dee046a99a2a811c461f1969c3053), (0x100, 0xfcbe86c7900a88aedcffc83b479aa3a4),
+                 (0x200, 0xf987a7253ac413176f2b074cf7815e54), (0x400, 0xf3392b0822b70005940c7a398e4b70f3),
+                 (0x800, 0xe7159475a2c29b7443b29c7fa6e889d9), (0x1000, 0xd097f3bdfd2022b8845ad8f792aa5825),
+                 (0x2000, 0xa9f746462d870fdf8a65dc1f90e061e5), (0x4000, 0x70d869a156d2a1b890bb3df62baf32f7),
+                 (0x8000, 0x31be135f97d08fd981231505542fcfa6), (0x10000, 0x9aa508b5b7a84e1c677de54f3e99bc9),
+                 (0x20000, 0x5d6af8dedb81196699c329225ee604), (0x40000, 0x2216e584f5fa1ea926041bedfe98),
+                 (0x80000, 0x48a170391f7dc42444e8fa2)]
+U256 = 2**256
+
+
+def sqrt_price_at_tick(tick):
+    """Uniswap's TickMath.getSqrtPriceAtTick, bit for bit."""
+    a = abs(tick)
+    require(a <= MAX_TICK, "tick out of range")
+    price = 0xfffcb933bd6fad37aa2d162d1a594001 if a & 0x1 else 1 << 128
+    for bit, factor in _TICK_FACTORS:
+        if a & bit:
+            price = (price * factor) >> 128
+    if tick > 0:
+        price = (U256 - 1) // price
+    return (price + (1 << 32) - 1) >> 32
+
+
+def pool_twap_quote(tick_delta, spl_delta, window, weth_is_0, stable_decimals):
+    """One pool over the window (SPEC O7): (price, weight), 18 decimals, or None when the pool must be left out."""
+    t = tick_delta // window                                # floor, toward minus infinity
+    if not weth_is_0:
+        t = -t                                              # WETH as the base
+    if abs(t) > MAX_TICK or spl_delta % 2**160 == 0:
+        return None
+    liq = min(window * (2**160 - 1) // ((spl_delta % 2**160) << 32), 2**128 - 1)
+    s = sqrt_price_at_tick(t)
+    price = (s * s // 2**64) * 10**(36 - stable_decimals) // 2**128
+    weight = (liq * s // 2**96) * 10**(18 - stable_decimals)
+    return price, weight
+
+
+def pool_twap_price(quotes, min_depth):
+    """SPEC O7: the liquidity-weighted median of the pools that were not left out; 0 (unavailable) below MIN_DEPTH.
+    Sorted by price, ties kept in construction order; the first price at which the cumulative weight reaches half."""
+    quotes = [q for q in quotes if q is not None]
+    total = sum(w for _, w in quotes)
+    if total < min_depth or total == 0:
+        return 0
+    acc = 0
+    for p, w in sorted(quotes, key=lambda q: q[0]):         # a stable sort: ties stay in construction order
+        acc += w
+        if 2 * acc >= total:
+            return p
+
+
 class OracleFeed:
     """
     gas_mode:
@@ -177,8 +252,14 @@ class OracleFeed:
     GAS_BUFFER = 20_000
 
     def __init__(self, clock, sources, staleness, timeout, *, sequencer=None, grace=3600,
-                 combine="single", max_skew=None, gas_mode="stipend", feed_gas_limit=200_000):
+                 combine="single", max_skew=None, gas_mode="stipend", feed_gas_limit=200_000,
+                 pool_source=None, max_deviation=None, pool_gas_limit=400_000):
         self.FEED_GAS_LIMIT = feed_gas_limit    # immutable per feed; must sit well above the honest cost
+        # SPEC O7, O8: the second source, fixed at construction (None: the single-source feed, exactly)
+        self.pool_source, self.max_deviation, self.POOL_GAS_LIMIT = pool_source, max_deviation, pool_gas_limit
+        assert pool_source is None or (max_deviation is not None and max_deviation > 0)
+        self.pool_invalid_since = 0
+        self.disagree_since = 0
         assert len(sources) == len(staleness)
         assert all(st < timeout for st in staleness), "stalenessThreshold < ORACLE_FAILURE_TIMEOUT (strict)"
         self.clock, self.sources, self.staleness, self.timeout = clock, sources, staleness, timeout
@@ -187,15 +268,17 @@ class OracleFeed:
         self.last_valid_at = clock.now
         price, status = self.fetch()
         require(status == VALID, "feed must be healthy at creation")     # 7, item 5
+        require(self.pool_invalid_since == 0, "the pool source must answer at creation")
         self.last_good = price
 
     # -- one guarded source read -> ("ok", value, updated_at) | ("malformed",)
-    def _read(self, src):
+    def _read(self, src, stipend=None):
         gas = self._gas
+        stipend = stipend or self.FEED_GAS_LIMIT
         if self.gas_mode == "stipend":
-            require(gas >= (self.FEED_GAS_LIMIT + CALL_OVERHEAD) * 64 // 63 + self.GAS_BUFFER,
+            require(gas >= (stipend + CALL_OVERHEAD) * 64 // 63 + self.GAS_BUFFER,
                     "insufficient gas for oracle call")
-            forwarded = self.FEED_GAS_LIMIT
+            forwarded = stipend
         else:
             require(gas > CALL_OVERHEAD, "out of gas")
             forwarded = (gas - CALL_OVERHEAD) * 63 // 64
@@ -225,34 +308,66 @@ class OracleFeed:
         # 1. network first: a sequencer outage makes every feed look stale
         if self.seq is not None and not self._sequencer_ok_for(self.grace):
             return getattr(self, "last_good", 0), NETWORK_UNSTABLE
-        # 2. read every source
+        # 2. read every source, then the pool source
         self._gas = gas
         reads = [self._read(src) for src in self.sources]
+        pool = self._read(self.pool_source, self.POOL_GAS_LIMIT) if self.pool_source is not None else None
         require(self._gas >= REST_OF_TX_GAS, "out of gas in the rest of the transaction")
         can_fail = self._sequencer_ok_for(self.timeout)
+        # 3. the pool source (O7, O8): available, or unavailable since its marker
+        pool_ok = pool is not None and pool[0] == "ok"
+        if self.pool_source is not None:
+            if pool_ok:
+                self.pool_invalid_since = 0
+            elif self.pool_invalid_since == 0:
+                self.pool_invalid_since = now               # persists only if this transaction does not revert
+        pool_dead = self.pool_source is None or (not pool_ok and now - self.pool_invalid_since >= self.timeout and can_fail)
+        # 4. the primary: healthy, dead, or temporarily bad
+        primary = "temp"
         if any(r[0] == "malformed" for r in reads):
             if self.invalid_since == 0:
                 self.invalid_since = now                     # persists only if this transaction does not revert
+            elif now - self.invalid_since >= self.timeout and can_fail:
+                primary = "dead"
+        else:
+            stamps = [r[2] for r in reads]
+            stale = any(now - ts > st for ts, st in zip(stamps, self.staleness))
+            skewed = self.max_skew is not None and max(stamps) - min(stamps) > self.max_skew
+            if stale or skewed:
+                # a well-formed but old answer neither sets nor clears the malformed marker
+                if now - min(stamps) > self.timeout and can_fail:
+                    primary = "dead"
+            else:
+                primary = "healthy"
+                self.invalid_since = 0
+        # 5. the decision (O8)
+        if primary == "healthy":
+            values = [r[1] for r in reads]
+            if self.combine == "single":
+                price = values[0]
+            elif self.combine == "ratio":                    # COLL/USD divided by REF/USD
+                price = values[0] * WAD // values[1]
+            else:                                            # "product": LST/ETH times ETH/USD
+                price = values[0] * values[1] // WAD
+            if pool_ok and self._disagree(price, pool[1]):
+                if self.disagree_since == 0:
+                    self.disagree_since = now
+                elif now - self.disagree_since >= self.timeout and can_fail:
+                    return self.last_good, FAILED
                 return self.last_good, PRICE_INVALID
-            if now - self.invalid_since >= self.timeout and can_fail:
+            return self._valid(price, now)
+        if primary == "dead":
+            if pool_ok:
+                return self._valid(pool[1], now)             # the fallback: a dead primary no longer shuts down
+            if pool_dead:
                 return self.last_good, FAILED
-            return self.last_good, PRICE_INVALID
-        stamps = [r[2] for r in reads]
-        stale = any(now - ts > st for ts, st in zip(stamps, self.staleness))
-        skewed = self.max_skew is not None and max(stamps) - min(stamps) > self.max_skew
-        if stale or skewed:
-            # a well-formed but old answer neither sets nor clears the malformed marker
-            if now - min(stamps) > self.timeout and can_fail:
-                return self.last_good, FAILED
-            return self.last_good, PRICE_INVALID
-        values = [r[1] for r in reads]
-        if self.combine == "single":
-            price = values[0]
-        elif self.combine == "ratio":                        # COLL/USD divided by REF/USD
-            price = values[0] * WAD // values[1]
-        else:                                                # "product": LST/ETH times ETH/USD
-            price = values[0] * values[1] // WAD
-        self.last_good, self.last_valid_at, self.invalid_since = price, now, 0
+        return self.last_good, PRICE_INVALID
+
+    def _disagree(self, a, b):
+        return max(a, b) * WAD > min(a, b) * (WAD + self.max_deviation)
+
+    def _valid(self, price, now):
+        self.last_good, self.last_valid_at, self.disagree_since = price, now, 0
         return price, VALID
 
     # ground truth helpers for tests (not part of the contract)
@@ -1733,5 +1848,5 @@ def check_invariants(system, tag=""):
     return report
 
 
-MODEL_CLASSES = (EpochStream, UniswapStub, Deployment, LPFeeVault, Sequencer, Source, OracleFeed, Token, Feed, FrontendRegistry, StabilityPool, Trove, Branch, System, Clock,
+MODEL_CLASSES = (EpochStream, UniswapStub, Deployment, LPFeeVault, Sequencer, Source, PoolSource, OracleFeed, Token, Feed, FrontendRegistry, StabilityPool, Trove, Branch, System, Clock,
                  StreamingStaking)

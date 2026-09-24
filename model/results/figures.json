@@ -12,12 +12,13 @@
     "branch_trace_tracked_zombies": "5",
     "branch_trace_troves": "29",
     "branch_trace_zombies_back_through_adjust": "4",
-    "declared_tests": "123",
+    "declared_tests": "127",
     "list_vector_max_size": "80",
     "list_vector_operations": "561",
     "list_vector_queues_checked": "485",
     "list_vector_queues_with_ties": "449",
     "lp_trace_steps": "368",
+    "oracle_trace_steps": "420",
     "routing_trace_by_debt": "3",
     "routing_trace_redemptions": "54",
     "routing_trace_steps": "400",
@@ -56,16 +57,16 @@
     "fuzz_troves_rewarded": "51"
   },
   "fuzz_oracle": {
-    "fuzz_oracle_stats": "{'Valid': 1243, 'PriceInvalid': 1016, 'NetworkUnstable': 3104, 'Failed': 2814, 'revert': 2364}"
+    "fuzz_oracle_stats": "{'Valid': 1020, 'PriceInvalid': 1802, 'NetworkUnstable': 2929, 'Failed': 3695, 'revert': 1702, 'fallback': 140, 'crosschecked': 303, 'disagreement': 118, 'failed_both_dead': 70, 'failed_disagreement': 22}"
   },
   "mutants": {
     "mutants_invalid": "0",
-    "mutants_killed": "39",
-    "mutants_killed_by_a_fuzzer": "13",
+    "mutants_killed": "52",
+    "mutants_killed_by_a_fuzzer": "19",
     "mutants_killed_by_fuzz": "7",
-    "mutants_killed_by_fuzz_oracle": "6",
+    "mutants_killed_by_fuzz_oracle": "12",
     "mutants_survived": "0",
-    "mutants_total": "39"
+    "mutants_total": "52"
   },
   "scenarios": {
     "claim_order_earlier_claims": "100",
@@ -83,8 +84,8 @@
     "path_gas_paid_eth": "0.030",
     "path_gas_posted_eth": "0.030",
     "path_tolerance_wei": "6",
-    "scenarios_passed": "35",
-    "scenarios_total": "35",
+    "scenarios_passed": "36",
+    "scenarios_total": "36",
     "settle_batch_size": "50",
     "settle_batches": "30",
     "settle_troves": "1,500",

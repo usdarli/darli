@@ -5,6 +5,7 @@ Each scenario checks the invariants before and after every step where it matters
 import os as _os
 _os.chdir(_os.path.dirname(_os.path.abspath(__file__)))
 import random
+from fractions import Fraction
 import sys
 import traceback
 
@@ -1596,6 +1597,153 @@ def scenario_35_liquidation_surplus_is_not_held_by_settlement():
     assert b.claim_surplus("a") == 0, "nothing is paid twice"
     check_invariants(s, "35")
     return "liquidation surplus paid during phase 1; settlement surplus after it"
+
+
+def scenario_36_two_price_sources():
+    """SPEC O3, O7, O8: a primary feed and a pool source. Expected statuses and prices are written from the rules."""
+    from model import PoolSource, sqrt_price_at_tick, pool_twap_quote, pool_twap_price, MAX_TICK
+    out = []
+    DEV = 5 * PCT
+
+    def setup(pool_price=2010 * E):
+        clock = Clock()
+        s = System(clock)
+        weth = Token("WETH")
+        seq = Sequencer(clock)
+        src = Source(clock, 2000 * E)
+        pool = PoolSource(clock, pool_price)
+        feed = OracleFeed(clock, [src], [STALE], TIMEOUT, sequencer=seq, grace=GRACE, pool_source=pool,
+                          max_deviation=DEV)
+        b = s.create_branch("WETH", weth, feed, mcr=110 * PCT, ccr=150 * PCT, scr=110 * PCT,
+                            pen_sp=5 * PCT, pen_redist=10 * PCT, min_debt=2000 * E, debt_cap=10**7 * E)
+        fund(weth, "u", 1000 * E)
+        b.open_trove("u", 100 * E, 20_000 * E, 5 * PCT)
+        return clock, b, feed, src, pool
+
+    # (a) both answer and agree within MAX_DEVIATION: Valid at the PRIMARY's price
+    clock, b, feed, src, pool = setup()
+    assert feed.fetch() == (2000 * E, VALID)
+    pool.value = 2000 * E * (WAD + DEV) // WAD                    # exactly at the bound: still agreement
+    assert feed.fetch() == (2000 * E, VALID)
+    out.append("a: agreement -> the primary's price")
+    # (b) disagreement: PriceInvalid, and Failed only after it lasted a timeout with no Valid between
+    pool.value += 1
+    assert b.poke_oracle() == PRICE_INVALID and feed.disagree_since == clock.now
+    t0 = clock.now
+    for _ in range(3):
+        clock.warp(8 * HOUR - 1); src.push()
+        assert b.poke_oracle() == PRICE_INVALID and b.shutdown_at == 0
+    clock.warp(t0 + TIMEOUT - clock.now); src.push()
+    assert b.poke_oracle() == FAILED and b.shutdown_at == clock.now and b._shutdown_price() == 2000 * E
+    out.append("b: disagreement -> PriceInvalid, Failed after exactly a timeout at the last good price")
+    # (c) agreement before the timeout clears the disagreement; a new one starts a fresh clock
+    clock, b, feed, src, pool = setup()
+    pool.value = 2500 * E
+    assert b.poke_oracle() == PRICE_INVALID
+    clock.warp(20 * HOUR); src.push(); pool.value = 2010 * E
+    assert b.poke_oracle() == VALID and feed.disagree_since == 0
+    pool.value = 2500 * E; clock.warp(10 * HOUR); src.push()
+    assert b.poke_oracle() == PRICE_INVALID
+    clock.warp(TIMEOUT - 1); src.push()
+    assert b.poke_oracle() == PRICE_INVALID and b.shutdown_at == 0, "the second disagreement has its own clock"
+    out.append("c: a Valid in between resets the disagreement clock")
+    # (c2) a disagreement, or dead pools, a timeout long but with a sequencer outage inside: no Failed until the
+    # sequencer has been up a whole timeout (O3)
+    for kind in ("disagreement", "dead pools"):
+        clock, b, feed, src, pool = setup()
+        seq = feed.seq
+        if kind == "disagreement":
+            pool.value = 2500 * E
+        else:
+            src.push(); clock.warp(TIMEOUT)                        # the primary dead a timeout ...
+            pool.available = False                                # ... and the pools gone
+        assert b.poke_oracle() == PRICE_INVALID
+        t0 = clock.now
+        clock.warp(10 * HOUR); seq.set(False)
+        clock.warp(10 * HOUR); seq.set(True)
+        clock.warp(t0 + TIMEOUT + HOUR - clock.now)
+        if kind == "disagreement":
+            src.push()
+        assert b.poke_oracle() == PRICE_INVALID and b.shutdown_at == 0, f"{kind}: the sequencer was up for 5h only"
+        clock.warp(t0 + 20 * HOUR + TIMEOUT - clock.now)
+        if kind == "disagreement":
+            src.push()
+        assert b.poke_oracle() == FAILED, f"{kind}: Failed once the sequencer was up a whole timeout"
+    out.append("c2: a sequencer outage postpones Failed for a disagreement and for dead pools")
+    # (d) a primary that is only stale: PriceInvalid whatever the pools say; dead: the pools take over, no shutdown
+    clock, b, feed, src, pool = setup()
+    clock.warp(STALE + 1)
+    assert b.poke_oracle() == PRICE_INVALID, "a temporarily bad primary is never replaced by the pools"
+    clock.warp(TIMEOUT - STALE)                                   # the primary's answer is now older than the timeout
+    pool.value = 1500 * E                                         # the market moved; nobody cross-checks a dead primary
+    assert b.poke_oracle() == VALID and feed.last_good == 1500 * E and b.shutdown_at == 0
+    b.borrow(1, 100 * E)                                          # price-dependent operations go on, at the pools' price
+    out.append("d: dead primary -> Valid at the pools' price, the branch lives on")
+    # (e) ... until the pools are unavailable too: PriceInvalid, Failed once they were unavailable for a timeout
+    pool.available = False
+    assert b.poke_oracle() == PRICE_INVALID and feed.pool_invalid_since == clock.now
+    clock.warp(TIMEOUT - 1)
+    assert b.poke_oracle() == PRICE_INVALID and b.shutdown_at == 0
+    clock.warp(1)
+    assert b.poke_oracle() == FAILED and b._shutdown_price() == 1500 * E, "both dead: the last good price"
+    out.append("e: both dead a timeout -> Failed at the last good (pool) price")
+    # (f) pools unavailable for ever, primary healthy: Valid at the primary's price, no kill switch
+    clock, b, feed, src, pool = setup()
+    pool.available = False
+    for _ in range(4):
+        clock.warp(TIMEOUT); src.push()
+        assert b.poke_oracle() == VALID and b.shutdown_at == 0
+    out.append("f: dead pools and a live primary -> Valid, no shutdown")
+    # (g) a malformed primary: the fallback does not clear its marker; when it heals, the cross-check is back
+    clock, b, feed, src, pool = setup()
+    src.reverts = True
+    assert b.poke_oracle() == PRICE_INVALID
+    t_bad = feed.invalid_since
+    clock.warp(TIMEOUT)
+    assert b.poke_oracle() == VALID and feed.last_good == 2010 * E
+    clock.warp(HOUR)
+    assert b.poke_oracle() == VALID and feed.invalid_since == t_bad, "only a healthy primary clears its marker"
+    src.reverts = False; src.push(2000 * E); pool.value = 2400 * E
+    assert b.poke_oracle() == PRICE_INVALID and feed.invalid_since == 0, "a healed primary is cross-checked again"
+    out.append("g: fallback keeps the primary's marker; a healed primary is cross-checked again")
+
+    # (h) the pool arithmetic (O7), against values fixed outside the code
+    assert sqrt_price_at_tick(0) == 2**96
+    assert sqrt_price_at_tick(-MAX_TICK) == 4295128739                          # Uniswap's MIN_SQRT_PRICE
+    assert sqrt_price_at_tick(MAX_TICK) == 1461446703485210103287273052203988822378723970342   # MAX_SQRT_PRICE
+    live = 4105245015388717284298858             # slot0 of the Base WETH/USDC 0.05 % pool at tick -197367
+    assert sqrt_price_at_tick(-197367) <= live < sqrt_price_at_tick(-197366)
+    # the mean tick rounds toward minus infinity: -7 over 2 seconds is tick -4 (WETH as token0)
+    q_floor = pool_twap_quote(-7, 1 << 100, 2, True, 6)
+    assert q_floor == pool_twap_quote(-8, 1 << 100, 2, True, 6), "floor(-3.5) = -4"
+    # WETH as token1: the tick is negated, so the same market reads the same price
+    assert pool_twap_quote(197367 * 1800, 1 << 100, 1800, False, 6)[0] == pool_twap_quote(-197367 * 1800, 1 << 100, 1800, True, 6)[0]
+    # a price near 2,700 dollars from the live tick, 6-decimal stablecoin, within the tick's width
+    p = pool_twap_quote(-197367 * 1800, 1 << 100, 1800, True, 6)[0]
+    exact = Fraction(sqrt_price_at_tick(-197367) ** 2, 2**192) * 10**12 * WAD
+    assert abs(p - exact) <= 1 and 2_600 * E < p < 2_800 * E
+    # weights: a deep pool and a thin one far away; the mean stays within 0.01 % of the deep pool
+    deep = pool_twap_quote(-197367 * 1800, 1 << 90, 1800, True, 6)
+    thin = pool_twap_quote(-190000 * 1800, 1 << 125, 1800, True, 6)       # a pool ~2x off, with ~2^35x less liquidity
+    mixed = pool_twap_price([deep, thin], 0)
+    assert deep[1] > 10**6 * thin[1] and mixed == deep[0], "a thin pool must weigh nothing"
+    # a pool drained to an extreme tick for the whole window: its time-weighted liquidity is ~1, its weight a few
+    # dollars, its price ~1e38 dollars. A mean of prices would follow it; the weighted median does not move
+    drained = pool_twap_quote(887_000 * 1800, (1800 << 128) // 3, 1800, True, 18)
+    assert 0 < drained[1] < 10**21 and drained[0] > 10**55
+    assert pool_twap_price([deep, drained], 0) == deep[0], "O7: an extreme price with no liquidity moves nothing"
+    mean = (deep[0] * deep[1] + drained[0] * drained[1]) // (deep[1] + drained[1])
+    assert mean > 10**6 * deep[0], "... where a mean of prices would have been moved a millionfold"
+    # the median: pools holding less than half the weight cannot move it; weights decide, not the count of pools
+    a, b_, c = (2000 * E, 3), (2100 * E, 3), (9000 * E, 5)
+    assert pool_twap_price([a, b_, c], 0) == 2100 * E                   # cumulative 3, 6 >= 11/2
+    assert pool_twap_price([c, a, (2100 * E, 1)], 0) == 9000 * E        # 3, 4, 9: the heavy pool is the median
+    assert pool_twap_price([(3, 1), (1, 1), (2, 1), (4, 1)], 0) == 2    # sorted first; exactly half reached at 2
+    assert pool_twap_price([(5, 2), (1, 1), (9, 1)], 0) == 5            # 1, 3 >= 4/2: the lower of an exact split
+    assert pool_twap_price([deep, thin], deep[1] + thin[1] + 1) == 0, "below MIN_DEPTH: unavailable"
+    assert pool_twap_price([None, None], 0) == 0
+    out.append("h: tick maths, floor, orientation, liquidity weights, depth floor")
+    return "; ".join(out)
 
 
 SCENARIOS = [v for k, v in sorted(globals().items()) if k.startswith("scenario_")]
