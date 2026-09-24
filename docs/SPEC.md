@@ -164,7 +164,7 @@ A Trove is an NFT with `coll`, `recordedDebt`, `annualRate`, `stake`, redistribu
 ## 9. Settlement after a shutdown
 
 ### 9.1 Reference price
-- **X1** `settlePrice` is fixed once: the `Valid` price at shutdown, or `lastGoodPrice` after an oracle failure; if no definite status exists at shutdown, fixed at the first settlement. Later market moves change nothing; once it is fixed, settling reads no price. (S-02, S-15a, S-23, M-31, Foundry `test_theReferencePriceIsFixedOnceAndLaterMovesChangeNothing`, `test_settlingReadsNoPriceOnceTheReferencePriceIsFixed`)
+- **X1** `settlePrice` is fixed once, in the shutdown transaction: the price if the feed reads `Valid` there, otherwise `lastGoodPrice` (after an oracle failure, and in any temporary state alike: no settlement ever waits for the feed). Later market moves change nothing, and settling reads no price. (S-02, S-15a, S-23, S-37, M-31, M-64, Foundry `test_theReferencePriceIsFixedOnceAndLaterMovesChangeNothing`, `test_settlingReadsNoPriceOnceTheReferencePriceIsFixed`)
 
 ### 9.2 Phase 1: settle every Trove
 - **X2** `settleTrove(tid)` is permissionless and does constant work: touch the Trove (pending redistribution applied, interest already stopped), `need = ceil(debt × WAD / settlePrice)`, `contribution = min(coll, need)`, `gross = coll − contribution`. Then `badDebt += debt`, `badDebtColl += contribution`, `parTotal += need`, `contribTotal += contribution`; `gross_of[owner] += gross`, `settleSurplusPool += gross`, `settleSurplusGross += gross`, `settleShortTotal += need − contribution`; `unsettled −= 1`. The caller receives the Trove's remaining gas deposit (M-36). No step scans the set of Troves (an open-Trove counter `n_open` replaces every scan). (S-22, S-23, S-27a, M-37, Foundry `test_diff_settlementMatchesModel_oracleFailure`, `test_aTroveHandsThePotItsDebtAtTheReferencePriceAndTheCallerItsDeposit`)
@@ -261,4 +261,4 @@ not behaviour. The honest measure is how many of the mutants a random tester kil
 
 ## 13. Open items before implementation
 
-1. Gas deposit amount. 2. Fixed values of `FEED_GAS_LIMIT` and oracle thresholds, among them the pool source's pool set, window `W`, `POOL_STALENESS`, `MIN_DEPTH` and `MAX_DEVIATION` (the fork test measures the reads they must cover; the window trades the cost of manipulating the pools against their lag behind a fast market, and `MAX_DEVIATION` must exceed that lag). 3. DARLI supply and distribution. 4. Persistent failure in shared settlement parts. 5. Legal review before any deployment.
+1. Gas deposit amount. 2. Fixed values of `FEED_GAS_LIMIT` and oracle thresholds, among them the pool source's pool set, window `W`, `POOL_STALENESS`, `MIN_DEPTH` and `MAX_DEVIATION` (the fork test measures the reads they must cover; the window trades the cost of manipulating the pools against their lag behind a fast market, and `MAX_DEVIATION` must exceed that lag). 3. DARLI supply and distribution. 4. Legal review before any deployment.

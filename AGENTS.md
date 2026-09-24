@@ -80,7 +80,7 @@ If any of these fails before your change, stop and report; do not start from a b
 
 ## 6. Things that are genuinely open (do not silently decide them)
 
-See `docs/SPEC.md` §13: the gas deposit amount, the oracle's gas stipends, thresholds and pool set, DARLI supply and distribution, persistent failure in the shared settlement path, and legal review. A task that needs one of these decided should propose, with evidence, and stop.
+See `docs/SPEC.md` §13: the gas deposit amount, the oracle's gas stipends, thresholds and pool set, DARLI supply and distribution, and legal review. A task that needs one of these decided should propose, with evidence, and stop.
 
 ## 7. Style
 

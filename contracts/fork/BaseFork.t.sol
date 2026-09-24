@@ -110,7 +110,7 @@ contract BaseForkTest is Test, DarliSystemBuild {
     uint256 constant POOL_STALENESS = 1 hours;
     uint256 constant MIN_DEPTH = 1_000_000 * E;
     uint256 constant POOL_CALL_GAS = 80_000;
-    uint256 constant POOL_SOURCE_GAS = 1_500_000;
+    uint256 constant POOL_SOURCE_GAS = 600_000; // about twice a cold read of the four pools; it sets the least gas limit of every price read
     uint256 constant MAX_DEVIATION = 5 * PCT;
 
     IPoolManager pm = IPoolManager(POOL_MANAGER);

@@ -115,7 +115,7 @@ contract BranchManager is
     uint256 public activeColl;
     uint256 public defaultColl;
     uint256 public gasPool;
-    uint256 public settlePrice; // reference price of the settlement, fixed at shutdown (0 until the oracle is definite)
+    uint256 public settlePrice; // reference price of the settlement, fixed in the shutdown transaction (X1)
     uint256 public unsettled; // open Troves at shutdown still to be settled
 
     // --- redistribution (SPEC §6.3; written by liquidation, read by every step B) ---------------------------------------
@@ -568,12 +568,7 @@ contract BranchManager is
     function fixSettlePrice() external nonReentrant returns (uint256 price) {
         _onlySettlement();
         if (_ledger.shutdownAt == 0) revert BranchNotShutDown();
-        price = settlePrice;
-        if (price == 0) {
-            price = _shutdownPrice(); // 0 while the oracle is in a temporary state: the settlement waits (X1)
-            if (price == 0) revert SettlePriceNotFixed();
-            settlePrice = price;
-        }
+        return settlePrice; // fixed at shutdown; settling never reads the feed (X1)
     }
 
     function settleOut(uint256 troveId, address caller, bool timely)
@@ -961,8 +956,8 @@ contract BranchManager is
         emit Shutdown(block.timestamp, settlePrice);
     }
 
-    /// The reference price of the settlement: the last good price after an oracle failure, the current price when it is
-    /// valid, and 0 (to be fixed by the first settlement) while the oracle is in a temporary state.
+    /// The reference price of the settlement (X1): the current price when the feed reads Valid, the last good price
+    /// otherwise -- after an oracle failure and in any temporary state alike, so that no settlement waits for the feed.
     function _shutdownPrice() internal returns (uint256) {
         if (_ledger.oracleFailed) return feed.lastGoodPrice();
         (uint256 price, PriceStatus status) = feed.fetchPrice();
@@ -970,7 +965,7 @@ contract BranchManager is
             _ledger.oracleFailed = true;
             return feed.lastGoodPrice();
         }
-        return status == PriceStatus.Valid ? price : 0;
+        return status == PriceStatus.Valid ? price : feed.lastGoodPrice();
     }
 
     // =================================================================================================================

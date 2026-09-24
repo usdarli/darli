@@ -87,7 +87,7 @@ interface ISettlement {
 /// @notice The branch's side of settlement: the ledger moves that only its BranchSettlement may ask for. Each is one step
 ///         of the model's settlement code, in the model's order; none of them scans the Troves.
 interface ISettlementHooks {
-    /// @notice the reference price (X1): fixed at shutdown, or now from a definite oracle status; reverts without one.
+    /// @notice the reference price (X1), fixed in the shutdown transaction; reading it never touches the feed.
     function fixSettlePrice() external returns (uint256);
     /// @notice closes a Trove as settled and pays its remaining gas deposit to `caller`. Timely (not written off): touches
     ///         it first and moves its debt and its contribution to the pot, and one Trove fewer is unsettled.

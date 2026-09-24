@@ -83,7 +83,6 @@ error ShortfallAboveDust();
 error TroveNotLiquidatable();
 error InvalidRecipient();
 error BranchNotShutDown();
-error SettlePriceNotFixed();
 error SettlementPhaseOneOpen();
 error ClaimOutOfRange();
 error CollOutBelowMinimum(uint256 collOut, uint256 minCollOut);

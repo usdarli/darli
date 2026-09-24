@@ -12,13 +12,14 @@ An immutable, ETH-backed stablecoin protocol for Base: borrowers set their own i
 | `model/` | Executable reference model (Python, standard library only, exact integer arithmetic): scenarios, two fuzzers with asserted coverage floors, mutants that the tests must kill, an agent-based simulator |
 | `RELEASING.md` | Release checklist: what must be green, enabled and decided before a version is announced |
 | `AGENTS.md` | Operating rules for AI coding agents and contributors: what must never change, how a rule change is made, what looks like a bug but is not |
-| `contracts/` | Solidity (Foundry): math libraries checked bit-for-bit against the model, the stablecoin, the two-source oracle (an external feed backed by a pool source), the one-shot deployer, the live branch -- borrowing, the redemption queue, the Stability Pool, liquidation and redistribution, redemption and its routing across branches -- the settlement after a shutdown, a contract of its own, and the revenue router and DARLI staking, all replayed against model-driven traces wei for wei; the liquidity vault on Uniswap v4; and the build of a whole system at predicted addresses, checked link by link before it is sealed (`script/DarliSystem.s.sol`), with an end-to-end test of its life. `make fork` checks what needs Base itself -- the PoolManager's storage layout, the pool race, the vault on a real pool, the live price feed -- on a fork at a pinned block. The branch contract is within a few hundred bytes of the 24 KB limit |
+| `frontend/` | One self-contained HTML page (no external script, style or font) for every user action, to be pinned on IPFS; each action can also be sent through Ethereum. `contracts/script/check_frontend.py` checks its function selectors against the contracts |
+| `contracts/` | Solidity (Foundry): math libraries checked bit-for-bit against the model, the stablecoin, the two-source oracle (an external feed backed by a pool source), the one-shot deployer, the live branch -- borrowing, the redemption queue, the Stability Pool, liquidation and redistribution, redemption and its routing across branches -- the settlement after a shutdown, a contract of its own, and the revenue router and DARLI staking, all replayed against model-driven traces wei for wei; the liquidity vault on Uniswap v4; and the build of a whole system at predicted addresses, checked link by link before it is sealed (`script/DarliSystem.s.sol`), with an end-to-end test of its life. `make fork` checks what needs Base itself -- the PoolManager's storage layout, the pool race, the vault on a real pool, the live price feed and the pools behind it -- on a fork at a pinned block, and the path around a censoring sequencer on an Ethereum fork (`script/ForceInclude.s.sol`). The branch contract is within a few hundred bytes of the 24 KB limit |
 
 ## What Darli is
 
 - Borrow USDarli against ETH at an interest rate you choose; the lowest rates are redeemed first.
 - Debt is settled by a Stability Pool, then by redistribution, then by an explicit bad-debt ledger. Liquidation never depends on selling collateral in a market.
-- One external ETH/USD feed per branch, with sequencer and staleness guards and a fixed gas stipend. The protocol's own pool is never a price source.
+- Two price sources per branch: an external ETH/USD feed, cross-checked against and backed by the liquidity-weighted median of third-party ETH/stablecoin pools; sequencer and staleness guards and fixed gas stipends. The protocol's own pool is never a price source.
 - **Immutable**: no owner, proxy, pause, setter or vote. The debt cap raises itself on a schedule. New collateral means a new, independent deployment.
 - **DARLI** has no vote; stakers receive 25% of interest and loan fees in fixed weekly epochs.
 - **After a shutdown**, one reference price is fixed, every Trove is settled, and every USDarli then claims the same fraction of the pot, in any order.
@@ -51,7 +52,7 @@ An immutable, ETH-backed stablecoin protocol for Base: borrowers set their own i
 
 ## Open items before implementation
 
-See `docs/SPEC.md` §13: the gas deposit amount, the oracle's gas stipends, thresholds and pool set, DARLI supply and distribution, persistent failure in the shared settlement path, and legal review before any deployment.
+See `docs/SPEC.md` §13: the gas deposit amount, the oracle's gas stipends, thresholds and pool set, DARLI supply and distribution, and legal review before any deployment.
 
 ## Comparison with similar protocols
 

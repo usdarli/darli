@@ -121,4 +121,67 @@ fig("beta_redeemed_pct_beta4_calm", b4["redeemed"], ".0f")
 fig("beta_exit_ratio_calm", b4["exits"] / b1["exits"], ".1f")
 fig("beta_exit_ratio_crash40", c4["exits"] / c1["exits"], ".1f")
 
+# --- the oracle thresholds against a year of Base history (oracle_history.py) -----------------------------------------------
+hist = load("results/oracle_history.jsonl")
+hmeta, hist = hist[0]["meta"], hist[1:]
+episodes = {}
+for r in hist:
+    if r["tag"].startswith("episode"):
+        episodes.setdefault(r["tag"], []).append(r)
+assert len(episodes) == 16 and all(r["chainlink"] and r["pools"] for r in hist), "an incomplete oracle history"
+
+
+def gap(r, w):
+    m = r["median"][str(w)]
+    return abs(m - r["chainlink"]) / r["chainlink"] if m else None
+
+
+def stretches(w, d):
+    """Minutes the two sources would have disagreed by more than d in the fast markets, and the longest stretch."""
+    total = longest = 0
+    for rs in episodes.values():
+        run = 0
+        for r in sorted(rs, key=lambda x: x["block"]):
+            g = gap(r, w)
+            run = run + 1 if g is not None and g > d else 0
+            total += run > 0
+            longest = max(longest, run)
+    return total, longest
+
+
+fig("oracle_history_samples", len(hist), ",")
+fig("oracle_history_episode_samples", sum(len(v) for v in episodes.values()), ",")
+fig("oracle_history_fastest_hour_pct", hmeta["hourly_moves_top"][0][0] * 100, ".1f")
+fig("oracle_history_16th_fastest_hour_pct", hmeta["hourly_moves_top"][-1][0] * 100, ".1f")
+rows = []
+for w in (300, 600, 1800):
+    gaps = sorted(g for g in (gap(r, w) for r in hist) if g is not None)
+    base = sorted(g for g in (gap(r, w) for r in hist if r["tag"] == "baseline") if g is not None)
+    cells = [f"{gaps[-1] * 100:.2f}%", f"{base[int(0.99 * len(base))] * 100:.2f}%"]
+    for d in (0.02, 0.03, 0.05):
+        t, lo = stretches(w, d)
+        cells.append(f"{t} / {lo}")
+    rows.append(f"| {w // 60} min | " + " | ".join(cells) + " |")
+    if w == 600:
+        fig("oracle_history_max_gap_600_pct", gaps[-1] * 100, ".2f")
+head = ("| window | largest gap, any sample | 99th percentile, ordinary days | minutes / longest stretch beyond 2 % "
+        "| beyond 3 % | beyond 5 % |\n| --- | --- | --- | --- | --- | --- |")
+fig("oracle_history_table", "\n\n" + head + "\n" + "\n".join(rows) + "\n\n")
+ages = {n: max(r["pools"][n]["age"] for r in hist if n in r["pools"]) for n in hmeta["pools"]}
+fig("oracle_history_max_pool_age_min", max(ages.values()) / 60, ".0f")
+weights = [sum(v["q"]["600"][1] for v in r["pools"].values() if v["q"]["600"] and v["age"] <= hmeta["pool_staleness"])
+           for r in hist]
+fig("oracle_history_min_total_weight_musd", min(weights) / 10**24, ".1f")
+usdt = max(r["pools"]["aero_usdt"]["q"]["600"][1] / w for r, w in zip(hist, weights)
+           if "aero_usdt" in r["pools"] and r["pools"]["aero_usdt"]["q"]["600"])
+fig("oracle_history_max_usdt_share_pct", usdt * 100, ".1f")
+
+# --- Base gas prices over the same year (base_gas_history.py) ---------------------------------------------------------------
+gas = load("results/base_gas_history.jsonl")[1:]
+fees = sorted(g["base_max"] + g["tip90_max"] for g in gas)
+fig("gas_history_hours", len(gas), ",")
+fig("gas_history_median_gwei", sorted(g["base_median"] for g in gas)[len(gas) // 2] / 1e9, ".4f")
+fig("gas_history_p99_gwei", fees[int(0.99 * len(fees))] / 1e9, ".3f")
+fig("gas_history_max_gwei", fees[-1] / 1e9, ".3f")
+
 print(f"figures: {dump('studies')} recorded from the committed study results")

@@ -11,11 +11,16 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 
 | file | hash |
 | --- | --- |
-| contracts/fork/BaseFork.t.sol | `56e63704dda2b54f` |
+| contracts/fork/BaseFork.t.sol | `ec48d81e1c9eabc1` |
+| contracts/fork/ForceInclusion.t.sol | `cde145ae6a2e72a5` |
 | contracts/foundry.toml | `8e5576a6ce9c627f` |
 | contracts/remappings.txt | `92d8fe713d1d0c46` |
 | contracts/script/DarliSystem.s.sol | `740988106577d832` |
+| contracts/script/DeployFeed.s.sol | `a8d85dc9364d024a` |
+| contracts/script/ForceInclude.s.sol | `214c5259214e8dfb` |
+| contracts/script/RehearseUse.s.sol | `1e2a7d962c1600bb` |
 | contracts/script/branch_trace.py | `82843e4c3260e94c` |
+| contracts/script/check_frontend.py | `62d0efa9077b235b` |
 | contracts/script/check_test_count.py | `fce577ae0f91f146` |
 | contracts/script/export_vectors.py | `cbe45822127db17e` |
 | contracts/script/lp_trace.py | `b2a588bff29381c0` |
@@ -24,8 +29,8 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | contracts/script/settle_trace.py | `7db8d6ebd5870cc3` |
 | contracts/script/sp_trace.py | `0ba08268a534e3d9` |
 | contracts/script/staking_trace.py | `343ee0e60a543411` |
-| contracts/src/Types.sol | `17ecf24b13aaa078` |
-| contracts/src/core/BranchManager.sol | `5ef69c86e4855d85` |
+| contracts/src/Types.sol | `4037c004df793b82` |
+| contracts/src/core/BranchManager.sol | `a150785c1d26870a` |
 | contracts/src/core/BranchSettlement.sol | `a37629ab1069fdbb` |
 | contracts/src/core/CollateralRegistry.sol | `9c7cc90cd7b12ad0` |
 | contracts/src/core/CollateralVault.sol | `6f391a45db4f4c9f` |
@@ -37,7 +42,7 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | contracts/src/core/TroveNFT.sol | `dcc0a15f051eda3d` |
 | contracts/src/deploy/DarliDeployer.sol | `d5ddea6c6d552305` |
 | contracts/src/interfaces/IBorrowerGateway.sol | `b287f9326f196a1f` |
-| contracts/src/interfaces/IBranchManager.sol | `4d8a5c5d31b97ab7` |
+| contracts/src/interfaces/IBranchManager.sol | `4134f4feeb9f7f9d` |
 | contracts/src/interfaces/ICore.sol | `b97a15ffe9fcca5a` |
 | contracts/src/interfaces/IPriceFeed.sol | `f2034a6189063139` |
 | contracts/src/interfaces/IStabilityPool.sol | `e31e002e2b1d94ea` |
@@ -56,7 +61,7 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | contracts/src/revenue/DarliToken.sol | `3f785622bea91fd8` |
 | contracts/src/revenue/RevenueRouter.sol | `5e62faed65197df7` |
 | contracts/test/BranchFixture.sol | `c32bac0957efa067` |
-| contracts/test/BranchManager.invariant.t.sol | `df1ad3a1d488923e` |
+| contracts/test/BranchManager.invariant.t.sol | `f0e7f50053806013` |
 | contracts/test/BranchManager.t.sol | `12aaf35f1bd94563` |
 | contracts/test/BranchManager.trace.t.sol | `3664646a75ffd061` |
 | contracts/test/BranchSettlement.trace.t.sol | `1b96f047f1c94d0b` |
@@ -75,7 +80,8 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | contracts/test/RateSortedList.t.sol | `85ae503e09a92cf0` |
 | contracts/test/Redemption.t.sol | `148b3be0d7adf45f` |
 | contracts/test/Revenue.t.sol | `d033859f98d33fbe` |
-| contracts/test/Settlement.t.sol | `85eb9f73bd199baf` |
+| contracts/test/Settlement.t.sol | `1d6660ba88b8e53c` |
+| contracts/test/SettlementGas.t.sol | `c9a6c11e547410b7` |
 | contracts/test/StabilityPool.t.sol | `c7530b42b466d6c5` |
 | contracts/test/StableToken.t.sol | `049ab75f2a809d16` |
 | contracts/test/mocks/BranchMocks.sol | `dcc3313ca6048a53` |
@@ -94,25 +100,29 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | contracts/test/vectors/sorted_list.json | `aee5b22cb952dcd8` |
 | contracts/test/vectors/stability_pool.json | `10988275992dda22` |
 | contracts/test/vectors/staking_trace.json | `46d5ccd5f5b8bf6c` |
-| docs/SPEC.md | `b063ec6ae54fb94b` |
+| docs/SPEC.md | `df5069d60163da7c` |
+| model/base_gas_history.py | `dff8cbe34d3d1d7d` |
 | model/beta_pilot_compare.py | `64251462b830a798` |
 | model/check_figures.py | `a020fc9d36346070` |
-| model/check_manifest.py | `0fea01d4d911a059` |
+| model/check_manifest.py | `dc4d3869bfaef8de` |
 | model/econ_sim.py | `0879f097984198c0` |
 | model/figures.py | `369609e969c9154a` |
 | model/fuzz.py | `4f1e47e68c2212d3` |
 | model/fuzz_oracle.py | `0386cb59271735dd` |
-| model/model.py | `506b8278cb56538f` |
-| model/mutants.py | `cfa024944605fa1d` |
+| model/model.py | `f57bc8f7838b6a37` |
+| model/mutants.py | `3e1962e6f818c6e4` |
+| model/oracle_history.py | `bcd6e80c9b361d00` |
 | model/pilot_sweep.py | `0c455b594abe902b` |
+| model/results/base_gas_history.jsonl | `04481b5b0991e022` |
 | model/results/beta_pilot_compare.jsonl | `fa07685fba612226` |
-| model/results/figures.json | `b28dd1f4084ff6a1` |
+| model/results/figures.json | `1a9340449bff7ecd` |
+| model/results/oracle_history.jsonl | `619f351a9f86f940` |
 | model/results/pilot_seeds.jsonl | `c2a43f83c43d0b34` |
 | model/results/pilot_summary.jsonl | `2f2123cc4634717f` |
 | model/spec_check.py | `3f5c48a3f3479574` |
-| model/study_figures.py | `b48e908d52ad4f07` |
+| model/study_figures.py | `00e060cead504fc3` |
 | model/test_econ_sim.py | `2524e340610edd23` |
-| model/test_scenarios.py | `b8780b9d5e73eaef` |
+| model/test_scenarios.py | `4844cd840d9d8a8d` |
 
 ### Submodules, at the commit this release pins
 
@@ -126,11 +136,11 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 
 | group | command | tool | result |
 | --- | --- | --- | --- |
-| scenarios | `python3 test_scenarios.py` | Python 3.12 | <!-- fig:scenarios.scenarios_passed -->36<!-- /fig -->/<!-- fig:scenarios.scenarios_total -->36<!-- /fig --> passed |
+| scenarios | `python3 test_scenarios.py` | Python 3.12 | <!-- fig:scenarios.scenarios_passed -->37<!-- /fig -->/<!-- fig:scenarios.scenarios_total -->37<!-- /fig --> passed |
 | simulator self-tests | `python3 test_econ_sim.py` | Python 3.12 | <!-- fig:econ_sim.econ_sim_passed -->8<!-- /fig -->/<!-- fig:econ_sim.econ_sim_total -->8<!-- /fig --> passed |
 | accounting fuzzer | `python3 fuzz.py 30 300` | Python 3.12 | no property violated (max eps <!-- fig:fuzz.fuzz_max_eps_wei -->17<!-- /fig --> wei); <!-- fig:fuzz.fuzz_troves_rewarded -->51<!-- /fig --> Troves rewarded; every operation met its coverage floor |
 | oracle fuzzer | `python3 fuzz_oracle.py 200 150` | Python 3.12 | no property violated |
-| mutants | `python3 mutants.py` | Python 3.12 | <!-- fig:mutants.mutants_total -->52<!-- /fig --> run, <!-- fig:mutants.mutants_killed -->52<!-- /fig --> killed, <!-- fig:mutants.mutants_survived -->0<!-- /fig --> survived, <!-- fig:mutants.mutants_invalid -->0<!-- /fig --> invalid |
+| mutants | `python3 mutants.py` | Python 3.12 | <!-- fig:mutants.mutants_total -->53<!-- /fig --> run, <!-- fig:mutants.mutants_killed -->53<!-- /fig --> killed, <!-- fig:mutants.mutants_survived -->0<!-- /fig --> survived, <!-- fig:mutants.mutants_invalid -->0<!-- /fig --> invalid |
 | spec mapping | `python3 spec_check.py` | Python 3.12 | every scenario, every mutant and every Foundry test that `docs/SPEC.md` cites exists, and every scenario and mutant is cited |
 | manifest | `python3 check_manifest.py` | Python 3.12 | all hashes match, all required files listed |
 | figures | `python3 check_figures.py` | Python 3.12 | every figure quoted below matches the run that produced it |
@@ -143,7 +153,7 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | liquidity vault trace | the same command | Python 3.12 | <!-- fig:contracts.lp_trace_steps -->368<!-- /fig --> steps of the model's vault accounting: deposits, withdrawals, fees in both tokens, reward tokens streamed over fixed epochs, a just-in-time entrant, fees and rewards arriving with nobody holding shares; the vault's books match every recorded number. The vault on a real pool is checked by `make fork`, which is not part of this record |
 | oracle trace | the same command | Python 3.12 | <!-- fig:contracts.oracle_trace_steps -->420<!-- /fig --> steps of the model's two-source feed: primary answers fresh, old, future-dated, non-positive, reverting and burning their stipend; pool-source answers near, far, unavailable and failing; sequencer outages; a disagreement held a timeout, a dead primary handed over to the pools, both sources dead. DualSourcePriceFeed matches every status, price and marker. The pool source's arithmetic is checked on its own vectors (single-pool quotes and weighted medians, crafted ties and exact half splits among them), and on real Base pools on a fork. |
 | Stability Pool vectors | the same command | Python 3.12 | <!-- fig:contracts.sp_trace_steps -->400<!-- /fig --> operations on the model's pool; <!-- fig:contracts.sp_trace_rescaling_offsets -->32<!-- /fig --> offsets rescaled P, <!-- fig:contracts.sp_trace_multi_rescale_offsets -->4<!-- /fig --> of them more than once, up to scale <!-- fig:contracts.sp_trace_max_scale -->36<!-- /fig -->; `StabilityPool` matches every value of the pool and of every depositor |
-| Solidity | `forge test` | forge 1.5.1-stable, solc 0.8.26 | <!-- fig:contracts.declared_tests -->127<!-- /fig --> passed, 0 failed; `check_test_count.py` confirms forge ran exactly the declared number |
+| Solidity | `forge test` | forge 1.5.1-stable, solc 0.8.26 | <!-- fig:contracts.declared_tests -->131<!-- /fig --> passed, 0 failed; `check_test_count.py` confirms forge ran exactly the declared number |
 | pilot tables | `python3 pilot_sweep.py 0 6 20` | Python 3.12 | shipped in `results/`; hardest case rerun identical |
 
 All on the release commit, 2026-09-22, Linux x86-64. A hash match proves a file is the one recorded; this table records that the results were produced by running these files.
@@ -152,7 +162,7 @@ All on the release commit, 2026-09-22, Linux x86-64. A hash match proves a file 
 
 Every number below is recorded by the run that computes it and checked by `python3 check_figures.py`; none is typed in by hand.
 
-- `test_scenarios.py`: **<!-- fig:scenarios.scenarios_passed -->36<!-- /fig -->/<!-- fig:scenarios.scenarios_total -->36<!-- /fig --> scenarios passed** (scenario 27(c) tests the rounding bound with a <!-- fig:scenarios.claim_order_earlier_claims -->100<!-- /fig -->-claim case)
+- `test_scenarios.py`: **<!-- fig:scenarios.scenarios_passed -->37<!-- /fig -->/<!-- fig:scenarios.scenarios_total -->37<!-- /fig --> scenarios passed** (scenario 27(c) tests the rounding bound with a <!-- fig:scenarios.claim_order_earlier_claims -->100<!-- /fig -->-claim case)
 - `fuzz.py 30 300`: <!-- fig:fuzz.fuzz_stats -->{'ok': 4253, 'reverted': 904, 'max_eps': 17, 'max_ratio': 0.4444444444444444, 'shutdowns': 33, 'with_bad_debt': 18, 'troves_rewarded': 51, 'gas_paid_total': 51000000000000000}<!-- /fig -->
   The first branch posts a deposit, so the run asserts both that a deposit exists and that rewards were actually paid.
 - `fuzz_oracle.py 200 150`: <!-- fig:fuzz_oracle.fuzz_oracle_stats -->{'Valid': 1020, 'PriceInvalid': 1802, 'NetworkUnstable': 2929, 'Failed': 3695, 'revert': 1702, 'fallback': 140, 'crosschecked': 303, 'disagreement': 118, 'failed_both_dead': 70, 'failed_disagreement': 22}<!-- /fig -->
@@ -166,7 +176,7 @@ Stability Pool deposits <!-- fig:fuzz.fuzz_ops_sp_dep -->61<!-- /fig -->, settle
 settlement of a written-off Trove <!-- fig:fuzz.fuzz_ops_late -->8<!-- /fig -->, late-recovery claims <!-- fig:fuzz.fuzz_ops_claim_late -->11<!-- /fig -->; <!-- fig:fuzz.fuzz_shutdowns -->33<!-- /fig --> branches shut down over the run.
 
 ### What the random testers kill on their own
-Of <!-- fig:mutants.mutants_total -->52<!-- /fig --> mutants, all <!-- fig:mutants.mutants_killed -->52<!-- /fig --> are killed, but only <!-- fig:mutants.mutants_killed_by_a_fuzzer -->19<!-- /fig --> are killed by a random tester with no scenario at all
+Of <!-- fig:mutants.mutants_total -->53<!-- /fig --> mutants, all <!-- fig:mutants.mutants_killed -->53<!-- /fig --> are killed, but only <!-- fig:mutants.mutants_killed_by_a_fuzzer -->19<!-- /fig --> are killed by a random tester with no scenario at all
 (<!-- fig:mutants.mutants_killed_by_fuzz -->7<!-- /fig --> by the accounting fuzzer, <!-- fig:mutants.mutants_killed_by_fuzz_oracle -->12<!-- /fig --> by the
 oracle fuzzer). The fuzzers are invariant checkers, not behavioural oracles: the scenarios carry the rest, and the
 conformance map in `docs/SPEC.md` 12 is written against these counts rather than against the mere existence of a fuzzer.
@@ -251,6 +261,21 @@ redemption (<!-- fig:studies.beta_redeemed_pct_beta1_calm -->4<!-- /fig -->% of 
 low-rate borrowers are pushed out. A companion study on a virtual-reserve pool, in which the price is free to fall, gives the opposite ranking: there cheaper redemption tightens the peg. That study is not in this package (next section).
 **Neither result settles beta**; what the two studies show together is that beta trades the
 holders' cost of exit against the borrowers' redemption burden, and that its effect depends on the shape of the liquidity. The dynamic formulas still show no advantage.
+
+### `python3 oracle_history.py` — the oracle's thresholds against a year of Base history (SPEC 13 item 2)
+<!-- fig:studies.oracle_history_table -->
+
+| window | largest gap, any sample | 99th percentile, ordinary days | minutes / longest stretch beyond 2 % | beyond 3 % | beyond 5 % |
+| --- | --- | --- | --- | --- | --- |
+| 5 min | 3.58% | 0.48% | 9 / 4 | 3 / 2 | 0 / 0 |
+| 10 min | 3.84% | 0.66% | 30 / 12 | 9 / 4 | 0 / 0 |
+| 30 min | 5.89% | 1.33% | 209 / 23 | 66 / 17 | 2 / 2 |
+
+<!-- /fig -->
+**Reading.** <!-- fig:studies.oracle_history_samples -->3,296<!-- /fig --> blocks of the year before the fork tests' pinned block, <!-- fig:studies.oracle_history_episode_samples -->2,896<!-- /fig --> of them one minute apart for three hours around each of the sixteen fastest hours of the year (Chainlink moved <!-- fig:studies.oracle_history_fastest_hour_pct -->8.7<!-- /fig -->% in the fastest, <!-- fig:studies.oracle_history_16th_fastest_hour_pct -->3.9<!-- /fig -->% in the sixteenth), the rest at random. At each, what the two-source feed would have read: the Chainlink answer, and the pool source's weighted median over the four pools of the fork tests, computed with the model's own arithmetic (the contract's, bit for bit). The table gives the gap between the two; "minutes / longest stretch" counts, in the fast hours only, the minutes the cross-check would have held the price invalid at that bound, and its longest uninterrupted stretch. The gap is the pools' lag behind a fast market plus Chainlink's own. A 30-minute window lags so far that a bound tight enough to catch a wrong feed would have paused liquidations in exactly the hours that need them; the 10-minute window's largest gap was <!-- fig:studies.oracle_history_max_gap_600_pct -->3.84<!-- /fig -->%, under a 5 % bound in every sample. In no sample was a pool's last observation older than <!-- fig:studies.oracle_history_max_pool_age_min -->37<!-- /fig --> minutes, their total weight never below <!-- fig:studies.oracle_history_min_total_weight_musd -->19.5<!-- /fig --> million dollars, and the USDT pool never held more than <!-- fig:studies.oracle_history_max_usdt_share_pct -->3.1<!-- /fig -->% of it: the median is, in practice, the USDC pools'. The study measures; the values are decided in SPEC 13.
+
+### `python3 base_gas_history.py` — Base gas prices over the same year, for the gas deposit (SPEC 13 item 1)
+**Reading.** <!-- fig:studies.gas_history_hours -->8,761<!-- /fig --> hours, each the base fee of 1,024 blocks and the priority fee of the last 20. The median base fee was <!-- fig:studies.gas_history_median_gwei -->0.0050<!-- /fig --> gwei. Taking in each hour the highest base fee plus the highest 90th-percentile tip, 99 % of the hours stayed at or below <!-- fig:studies.gas_history_p99_gwei -->1.000<!-- /fig --> gwei, and the single highest was <!-- fig:studies.gas_history_max_gwei -->49.705<!-- /fig --> gwei, for moments. The cost of the calls the deposit pays for is bounded in `contracts/test/SettlementGas.t.sol` (cold, as a keeper meets it): 420,000 gas for settling a Trove alone, 150,000 per Trove in a batch, 300,000 for a write-off, 500,000 for a liquidation. A worked example from those bounds: a deposit of 0.001 ETH pays a lone settlement, with the transaction's own 21,000 gas, at up to 0.001 / 441,000 ETH per gas, about 2.27 gwei; half of it pays a write-off up to about 1.56 gwei. Settlement can wait for a quiet hour, which liquidation cannot; a liquidation is also paid 0.5 % of the collateral (L3). The study measures; the amount is decided in SPEC 13.
 
 ### Studies referred to but not in this package
 

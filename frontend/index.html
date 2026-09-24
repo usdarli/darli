@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Darli</title>
+<!-- One self-contained file: no script, style, font or image is loaded from anywhere else, so a copy pinned on IPFS keeps
+     working and cannot be changed by anyone. It talks only to the wallet in the browser. Every function selector below is
+     checked against the contracts by contracts/script/check_frontend.py. -->
+<style>
+:root { --bg:#f7f7f5; --card:#ffffff; --ink:#1b1b1b; --muted:#666; --line:#dcdcd6; --accent:#1f5f8b; --warn:#9a4a00; }
+@media (prefers-color-scheme: dark) { :root { --bg:#141414; --card:#1d1d1d; --ink:#e8e8e3; --muted:#9a9a93; --line:#333; --accent:#6fb0dd; --warn:#e0a060; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { max-width:900px; margin:0 auto; padding:16px; }
+h1 { font-size:22px; margin:8px 0 4px; } h2 { font-size:17px; margin:0 0 10px; }
+p.lead { color:var(--muted); margin:0 0 16px; }
+section { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:14px 16px; margin:0 0 14px; }
+details > summary { cursor:pointer; font-weight:600; padding:4px 0; }
+.grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:8px 12px; margin:8px 0; }
+label { display:flex; flex-direction:column; font-size:13px; color:var(--muted); gap:3px; }
+input, select { font:inherit; color:var(--ink); background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:6px 8px; min-width:0; }
+button { font:inherit; border:1px solid var(--accent); background:var(--accent); color:#fff; border-radius:6px; padding:6px 12px; cursor:pointer; }
+button.alt { background:transparent; color:var(--accent); }
+.row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:6px; }
+.action { border-top:1px solid var(--line); padding:10px 0 4px; } .action:first-of-type { border-top:0; }
+.note { color:var(--muted); font-size:13px; margin:2px 0 0; }
+pre { background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px; overflow-x:auto; font-size:12px; white-space:pre-wrap; word-break:break-all; margin:6px 0 0; }
+.warn { color:var(--warn); }
+</style>
+</head>
+<body>
+<main>
+<h1>Darli</h1>
+<p class="lead">A plain interface to the Darli contracts on Base. It holds no keys and no funds; your wallet signs every
+transaction and shows it first. When the Base sequencer will not include a transaction, the same action can be sent
+through Ethereum, where the rollup must include it within its sequencing window.</p>
+
+<section>
+<h2>Wallet and contracts</h2>
+<div class="row"><button id="connect">Connect wallet</button><span id="who" class="note">not connected</span></div>
+<details id="addrbox"><summary>Contract addresses</summary>
+<p class="note">Addresses of the deployment. A link can carry them after <code>#</code>, e.g. <code>#manager=0x…&amp;sp=0x…</code>; they are kept in this browser.</p>
+<div class="grid" id="addrs"></div>
+</details>
+</section>
+
+<div id="sections"></div>
+
+<section>
+<h2>Last transaction</h2>
+<pre id="out">Nothing sent yet.</pre>
+</section>
+</main>
+
+<script type="application/json" id="selectors">
+{
+  "openTrove(address,uint256,uint256,uint256,uint32,uint256,uint256,uint256)": "0xb5875235",
+  "addColl(uint256,uint256)": "0x59f54f40",
+  "withdrawColl(uint256,uint256)": "0x580de360",
+  "borrow(uint256,uint256,uint256)": "0xadf459ca",
+  "repay(uint256,uint256)": "0xd8aed145",
+  "adjustRate(uint256,uint256,uint256,uint256,uint256)": "0x53d41b71",
+  "closeTrove(uint256)": "0x5aa6d461",
+  "troveDebt(uint256)": "0x37b506d5",
+  "troveColl(uint256)": "0x9a788159",
+  "settlePrice()": "0x2567d7d6",
+  "deposit(uint256)": "0xb6b55f25",
+  "withdraw(uint256)": "0x2e1a7d4d",
+  "claim()": "0x4e71d92d",
+  "redeem(uint256,uint256,uint256)": "0xb8192205",
+  "settleTrove(uint256)": "0xf4faf96f",
+  "redeemBadDebtColl(uint256,uint256)": "0x560a2994",
+  "claimSurplus()": "0x27ff02e3",
+  "claimLate()": "0x199e2ed6",
+  "stake(uint256)": "0xa694fc3a",
+  "unstake(uint256)": "0x2e17de78",
+  "routeRevenue()": "0x58d0bf85",
+  "claim(uint256,address)": "0xddd5e1b2",
+  "claimAll(address)": "0x77329f35",
+  "approve(address,uint256)": "0x095ea7b3",
+  "balanceOf(address)": "0x70a08231",
+  "depositTransaction(address,uint256,uint64,bool,bytes)": "0xe9e05c42"
+}
+</script>
+<script>
+"use strict";
+const SEL = JSON.parse(document.getElementById("selectors").textContent);
+const BASE = "0x2105", ETHEREUM = "0x1";
+const BASE_PORTAL = "0x49048044D57e1C92A77f79988d21Fa8fAF74E97e"; // Base's OptimismPortal on Ethereum (script/ForceInclude.s.sol)
+// which contract each name is; the checker reads this list to know where each selector must exist
+const CONTRACTS = {
+  manager: "BranchManager", sp: "StabilityPool", settlement: "BranchSettlement", registry: "CollateralRegistry",
+  staking: "DarliStaking", router: "RevenueRouter", vault: "DarliLiquidityVault", frontends: "FrontendRegistry",
+  weth: "ERC20", usdarli: "StableToken", darli: "DarliToken"
+};
+// argument kinds: self (your address), amount (18 decimals), rate (percent a year), uint, zero (sent as 0), token (0, 1, 2)
+const SECTIONS = [
+  ["Your Trove", [
+    { t: "Allow the branch to take WETH", c: "weth", s: "approve(address,uint256)", a: [["spender", "contract:manager"], ["WETH", "amount"]], n: "Needed once before opening a Trove or adding collateral (the collateral and the gas deposit)." },
+    { t: "Open a Trove", c: "manager", s: "openTrove(address,uint256,uint256,uint256,uint32,uint256,uint256,uint256)",
+      a: [["owner", "self"], ["collateral, WETH", "amount"], ["debt, USDarli", "amount"], ["rate, % a year", "rate"], ["interface id", "zero"], ["most upfront fee, USDarli", "amount"], ["hint", "zero"], ["hint", "zero"]],
+      n: "No interface id: the interfaces' share of your interest comes back to you." },
+    { t: "Add collateral", c: "manager", s: "addColl(uint256,uint256)", a: [["Trove id", "uint"], ["WETH", "amount"]], n: "Never needs a price." },
+    { t: "Repay", c: "manager", s: "repay(uint256,uint256)", a: [["Trove id", "uint"], ["USDarli", "amount"]], n: "Never needs a price." },
+    { t: "Close", c: "manager", s: "closeTrove(uint256)", a: [["Trove id", "uint"]], n: "Repays the whole debt from your USDarli and returns the collateral. Never needs a price." },
+    { t: "Withdraw collateral", c: "manager", s: "withdrawColl(uint256,uint256)", a: [["Trove id", "uint"], ["WETH", "amount"]] },
+    { t: "Borrow more", c: "manager", s: "borrow(uint256,uint256,uint256)", a: [["Trove id", "uint"], ["USDarli", "amount"], ["most upfront fee, USDarli", "amount"]] },
+    { t: "Change the rate", c: "manager", s: "adjustRate(uint256,uint256,uint256,uint256,uint256)", a: [["Trove id", "uint"], ["new rate, % a year", "rate"], ["most upfront fee, USDarli", "amount"], ["hint", "zero"], ["hint", "zero"]] },
+    { t: "Read debt", c: "manager", s: "troveDebt(uint256)", a: [["Trove id", "uint"]], view: true },
+    { t: "Read collateral", c: "manager", s: "troveColl(uint256)", a: [["Trove id", "uint"]], view: true },
+  ]],
+  ["Stability Pool", [
+    { t: "Allow the pool to take USDarli", c: "usdarli", s: "approve(address,uint256)", a: [["spender", "contract:sp"], ["USDarli", "amount"]] },
+    { t: "Deposit", c: "sp", s: "deposit(uint256)", a: [["USDarli", "amount"]] },
+    { t: "Withdraw", c: "sp", s: "withdraw(uint256)", a: [["USDarli", "amount"]], n: "Always allowed, before and after a shutdown." },
+    { t: "Claim collateral and yield", c: "sp", s: "claim()", a: [] },
+  ]],
+  ["Redeem", [
+    { t: "Redeem USDarli for ETH", c: "registry", s: "redeem(uint256,uint256,uint256)", a: [["USDarli", "amount"], ["most Troves per branch", "uint"], ["most fee, %", "rate"]], n: "One dollar of ETH per USDarli, less the fee, from the Troves at the lowest rates." },
+  ]],
+  ["After a shutdown", [
+    { t: "Settle a Trove", c: "settlement", s: "settleTrove(uint256)", a: [["Trove id", "uint"]], n: "Anyone may; the caller receives the Trove's gas deposit." },
+    { t: "Claim ETH for USDarli", c: "settlement", s: "redeemBadDebtColl(uint256,uint256)", a: [["USDarli", "amount"], ["least ETH accepted", "amount"]], n: "Once every Trove is settled: every USDarli the same share." },
+    { t: "Claim your surplus", c: "settlement", s: "claimSurplus()", a: [], n: "A borrower's collateral left over after settlement." },
+    { t: "Claim late recoveries", c: "settlement", s: "claimLate()", a: [] },
+    { t: "Read the settlement price", c: "manager", s: "settlePrice()", a: [], view: true },
+  ]],
+  ["DARLI and revenue", [
+    { t: "Allow staking to take DARLI", c: "darli", s: "approve(address,uint256)", a: [["spender", "contract:staking"], ["DARLI", "amount"]] },
+    { t: "Stake", c: "staking", s: "stake(uint256)", a: [["DARLI", "amount"]] },
+    { t: "Unstake", c: "staking", s: "unstake(uint256)", a: [["DARLI", "amount"]] },
+    { t: "Claim revenue", c: "staking", s: "claim()", a: [] },
+    { t: "Route revenue to stakers", c: "router", s: "routeRevenue()", a: [], n: "Anyone may." },
+    { t: "Claim an interface's share", c: "frontends", s: "claim()", a: [] },
+  ]],
+  ["Liquidity vault", [
+    { t: "Claim one token", c: "vault", s: "claim(uint256,address)", a: [["token: 0, 1 pool tokens, 2 reward", "uint"], ["to", "self"]], n: "Each token alone: a token that refuses you blocks only itself. Name another address if yours is refused." },
+    { t: "Claim all three", c: "vault", s: "claimAll(address)", a: [["to", "self"]] },
+  ]],
+];
+
+let account = null;
+const $ = (id) => document.getElementById(id);
+const eth = () => { if (!window.ethereum) throw new Error("no wallet in this browser"); return window.ethereum; };
+
+// --- addresses: this browser, overridden by the link --------------------------------------------------------------------
+const addr = JSON.parse(localStorage.getItem("darli.addresses") || "{}");
+for (const kv of location.hash.slice(1).split("&")) { const [k, v] = kv.split("="); if (k in CONTRACTS && v) addr[k] = v; }
+for (const k of Object.keys(CONTRACTS)) {
+  const l = document.createElement("label");
+  l.textContent = `${k} (${CONTRACTS[k]})`;
+  const i = document.createElement("input");
+  i.value = addr[k] || ""; i.placeholder = "0x…"; i.spellcheck = false;
+  i.oninput = () => { addr[k] = i.value.trim(); localStorage.setItem("darli.addresses", JSON.stringify(addr)); };
+  l.appendChild(i); $("addrs").appendChild(l);
+}
+localStorage.setItem("darli.addresses", JSON.stringify(addr));
+$("addrbox").open = Object.keys(CONTRACTS).some((k) => !isAddrText(addr[k]));
+function isAddrText(a) { return /^0x[0-9a-fA-F]{40}$/.test(a || ""); }
+
+// --- ABI encoding: static types only, plus the one `bytes` the Ethereum path needs ---------------------------------------
+const word = (x) => { let v = BigInt(x); if (v < 0n) v += 1n << 256n; if (v < 0n || v >= 1n << 256n) throw new Error("out of range"); return v.toString(16).padStart(64, "0"); };
+const isAddr = (a) => /^0x[0-9a-fA-F]{40}$/.test(a);
+const addrWord = (a) => { if (!isAddr(a)) throw new Error(`not an address: ${a}`); return a.slice(2).toLowerCase().padStart(64, "0"); };
+function units(s, decimals) { // "1.5" -> 1.5e18, exactly, as a BigInt
+  s = String(s).trim(); if (!/^\d+(\.\d+)?$/.test(s)) throw new Error(`not a number: ${s}`);
+  const [w, f = ""] = s.split("."); if (f.length > decimals) throw new Error(`more than ${decimals} decimals: ${s}`);
+  return BigInt(w) * 10n ** BigInt(decimals) + BigInt((f + "0".repeat(decimals)).slice(0, decimals));
+}
+function encode(sig, words) { if (!SEL[sig]) throw new Error(`unknown function ${sig}`); return SEL[sig] + words.join(""); }
+function depositTransaction(to, data, gasLimit) { // Base's portal: (to, value 0, gasLimit, false, bytes data)
+  const body = data.slice(2), len = body.length / 2, padded = body.padEnd(Math.ceil(len / 32) * 64, "0");
+  return encode("depositTransaction(address,uint256,uint64,bool,bytes)",
+    [addrWord(to), word(0), word(gasLimit), word(0), word(5 * 32), word(len), padded].filter((x) => x !== ""));
+}
+
+// --- the forms ---------------------------------------------------------------------------------------------------------
+function build(action, box) {
+  const fields = [];
+  const grid = document.createElement("div"); grid.className = "grid";
+  for (const [label, kind] of action.a) {
+    if (kind === "zero" || kind.startsWith("contract:")) { fields.push({ kind }); continue; }
+    const l = document.createElement("label"); l.textContent = label;
+    const i = document.createElement("input"); i.spellcheck = false;
+    if (kind === "self") i.placeholder = "your address";
+    l.appendChild(i); grid.appendChild(l); fields.push({ kind, input: i });
+  }
+  const values = () => fields.map((f) => {
+    const v = f.input ? f.input.value.trim() : "";
+    switch (f.kind) {
+      case "zero": return word(0);
+      case "self": return addrWord(v || account || "");
+      case "amount": return word(units(v, 18));
+      case "rate": return word(units(v, 16));            // percent -> WAD
+      case "uint": if (!/^\d+$/.test(v)) throw new Error(`not a whole number: ${v}`); return word(v);
+      default: return addrWord(addr[f.kind.split(":")[1]] || "");
+    }
+  });
+  const to = () => { const a = addr[action.c]; if (!isAddr(a || "")) throw new Error(`set the ${action.c} address first`); return a; };
+  const h = document.createElement("div"); h.className = "action";
+  const title = document.createElement("strong"); title.textContent = action.t; h.appendChild(title);
+  if (action.n) { const n = document.createElement("p"); n.className = "note"; n.textContent = action.n; h.appendChild(n); }
+  h.appendChild(grid);
+  const row = document.createElement("div"); row.className = "row";
+  const go = document.createElement("button"); go.textContent = action.view ? "Read" : "Send on Base";
+  go.onclick = () => run(async () => {
+    const data = encode(action.s, values()), target = to();
+    if (action.view) {
+      await chain(BASE);
+      const r = await eth().request({ method: "eth_call", params: [{ to: target, data }, "latest"] });
+      return `${action.t}: ${fmt(BigInt(r))}\n${target} ${data}`;
+    }
+    await connect(); await chain(BASE);
+    const tx = await eth().request({ method: "eth_sendTransaction", params: [{ from: account, to: target, data }] });
+    return `sent on Base: ${tx}\nto ${target}\ndata ${data}\nsame from a terminal: cast send ${target} ${data}`;
+  });
+  row.appendChild(go);
+  if (!action.view) {
+    const l1 = document.createElement("button"); l1.className = "alt"; l1.textContent = "Send through Ethereum";
+    l1.title = "When the Base sequencer does not include your transaction";
+    l1.onclick = () => run(async () => {
+      const data = encode(action.s, values()), target = to();
+      await connect(); await chain(ETHEREUM);
+      const wrapped = depositTransaction(target, data, 1_000_000n);
+      const tx = await eth().request({ method: "eth_sendTransaction", params: [{ from: account, to: BASE_PORTAL, data: wrapped }] });
+      return `sent through Ethereum: ${tx}\nIt takes effect on Base from the same address once the rollup derives it (at most the 12-hour sequencing window).\nBase target ${target}\nBase data ${data}`;
+    });
+    row.appendChild(l1);
+  }
+  h.appendChild(row); box.appendChild(h);
+}
+const fmt = (v) => { const w = 10n ** 18n; return `${v / w}.${(v % w).toString().padStart(18, "0").replace(/0+$/, "") || "0"} (${v})`; };
+for (const [name, actions] of SECTIONS) {
+  const s = document.createElement("section"), d = document.createElement("details"), sum = document.createElement("summary");
+  sum.textContent = name; d.appendChild(sum); if (name === "Your Trove") d.open = true;
+  for (const a of actions) build(a, d);
+  s.appendChild(d); $("sections").appendChild(s);
+}
+
+// --- the wallet --------------------------------------------------------------------------------------------------------
+async function connect() {
+  if (account) return;
+  [account] = await eth().request({ method: "eth_requestAccounts" });
+  $("who").textContent = account;
+}
+async function chain(id) {
+  const now = await eth().request({ method: "eth_chainId" });
+  if (now.toLowerCase() !== id) await eth().request({ method: "wallet_switchEthereumChain", params: [{ chainId: id }] });
+}
+async function run(f) {
+  const out = $("out"); out.classList.remove("warn"); out.textContent = "…";
+  try { out.textContent = await f(); } catch (e) { out.classList.add("warn"); out.textContent = e.message || String(e); }
+}
+$("connect").onclick = () => run(async () => { await connect(); return `connected: ${account}`; });
+</script>
+</body>
+</html>

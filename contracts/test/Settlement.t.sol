@@ -3,7 +3,7 @@ pragma solidity ^0.8.26;
 
 import {BranchFixture} from "./BranchFixture.sol";
 import {BranchSettlement} from "../src/core/BranchSettlement.sol";
-import {WAD, L_PRECISION} from "../src/libraries/Constants.sol";
+import {WAD, L_PRECISION, DUST_THRESHOLD} from "../src/libraries/Constants.sol";
 import "../src/Types.sol";
 
 /// SPEC §9 where the model-driven traces cannot reach: the boundaries of the batch and of the write-off delay, a
@@ -100,6 +100,26 @@ contract SettlementTest is BranchFixture {
         feed.setBroken(true); // any read of the feed would now revert
         _settle(t);
         assertEq(uint8(manager.getTrove(t).status), uint8(TroveStatus.ClosedBySettlement));
+    }
+
+    /// A shutdown by the rules while the feed is in a temporary state: bad debt below the dust threshold at every
+    /// liquidation adds up to it (set directly in the ledger here; reaching it is the subject of the traces), and the
+    /// sequencer is down when anyone triggers the shutdown.
+    function test_aShutdownInATemporaryOracleStateFixesTheLastGoodPriceAndNeverWaits() public {
+        uint256 t = _open(alice, 20 * E, 20_000 * E);
+        _open(bob, 200 * E, 50_000 * E);
+        manager.pokeOracle(); // Valid at 2,000: the last good price
+        vm.store(address(manager), bytes32(uint256(2)), bytes32(DUST_THRESHOLD)); // _ledger.badDebt
+        assertEq(manager.ledger().badDebt, DUST_THRESHOLD, "the slot of the bad debt");
+        feed.set(1_500 * E, PriceStatus.NetworkUnstable);
+        manager.triggerShutdown();
+        assertGt(manager.ledger().shutdownAt, 0, "a shutdown by the rules");
+        assertFalse(manager.ledger().oracleFailed);
+        assertEq(manager.settlePrice(), 2000 * E, "X1: fixed at once, at the last good price");
+        feed.setBroken(true); // and the feed never answers again
+        uint256 debt = manager.troveDebt(t);
+        (, uint256 contribution,) = _settle(t);
+        assertEq(contribution, _need(debt, 2000 * E), "X1: settlement goes on at the price fixed at shutdown");
     }
 
     function test_settlementWaitsForTheShutdown() public {

@@ -385,6 +385,7 @@ contract BranchManagerInvariantTest is StdInvariant, BranchFixture {
         assertEq(list.size(), active, "R2: queue size");
         if (manager.ledger().shutdownAt != 0) {
             assertEq(manager.unsettled(), open - written, "X2, X5: unsettled counts the open Troves not written off");
+            assertGt(manager.settlePrice(), 0, "X1: the reference price exists from the shutdown transaction on");
         }
         // R2: the tracked Zombie is a Zombie with debt left; one redeemed to zero is not tracked. A property of the live
         // branch: after a shutdown nothing is redeemed, so the pointer is never read again, and a write-off (X5) takes

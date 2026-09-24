@@ -1027,10 +1027,7 @@ class Branch:
         self.unsettled = self.n_open
         if self.unsettled == 0:
             self._end_phase_one()
-        try:
-            self._settle_price()
-        except Revert:
-            pass                                   # no definite oracle status yet: fixed by the first settlement instead
+        self._settle_price()                       # fixed now, whatever the feed's state (X1)
 
     def poke_oracle(self, gas=10**7):
         """Permissionless observation. It is the only path that reliably persists the `invalidSince` marker,
@@ -1189,8 +1186,9 @@ class Branch:
         if status == FAILED:
             self.oracle_failed = True
             return self.feed.last_good
-        require(status == VALID, f"shutdown op waits for a definite oracle status ({status})")
-        return price
+        if status == VALID:
+            return price
+        return self.feed.last_good                 # a temporary state: the last good price; settlement never waits (X1)
 
     # -- liquidation (SPEC 6.2) ----------------------------------------------
     def liquidate(self, tid, liquidator):

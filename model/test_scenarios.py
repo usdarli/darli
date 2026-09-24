@@ -1746,6 +1746,45 @@ def scenario_36_two_price_sources():
     return "; ".join(out)
 
 
+def scenario_37_the_reference_price_never_waits_for_the_feed():
+    """SPEC X1: a shutdown while the feed is in a temporary state fixes the reference price at once, at the last good
+    price. Settlement then goes on whatever the feed does afterwards: stays broken for ever, or recovers at another
+    price. The expected contributions are computed here from the debt and that price."""
+    from model import OracleFeed, Source, Sequencer, DUST_THRESHOLD
+    out = []
+    for after in ("broken for ever", "recovers elsewhere"):
+        clock = Clock()
+        s = System(clock)
+        weth = Token("WETH")
+        seq = Sequencer(clock)
+        src = Source(clock, 2000 * E)
+        feed = OracleFeed(clock, [src], [3 * HOUR], 24 * HOUR, sequencer=seq, grace=HOUR)
+        b = s.create_branch("WETH", weth, feed, mcr=110 * PCT, ccr=150 * PCT, scr=110 * PCT, pen_sp=5 * PCT,
+                            pen_redist=10 * PCT, min_debt=2000 * E, debt_cap=10**8 * E)
+        for who, coll, debt in (("a", 20, 20_000), ("c", 100, 50_000)):
+            fund(weth, who, coll * E)
+            b.open_trove(who, coll * E, debt * E, 5 * PCT)
+        assert b.poke_oracle() == VALID and feed.last_good == 2000 * E
+        # bad debt below the dust threshold at each liquidation, adding up to it later (state set directly: the
+        # arithmetic of getting there is the subject of other scenarios), then the sequencer goes down
+        b.bad_debt = DUST_THRESHOLD
+        seq.set(False)
+        b.trigger_shutdown()
+        assert b.shutdown_at == clock.now and not b.oracle_failed, "a shutdown by the rules, in a temporary oracle state"
+        assert b.settle_price == 2000 * E, "X1: fixed at once, at the last good price"
+        if after == "broken for ever":
+            src.reverts = True                                   # and the sequencer never comes back
+        else:
+            seq.set(True); clock.warp(2 * HOUR); src.push(1500 * E)
+            assert feed.fetch()[1] == VALID                      # the feed is healthy again, at another price
+        clock.warp(DAY)
+        debt = b.debt_now(b.troves[1])
+        r = b.settle_trove(1, "keeper")
+        assert r["contribution"] == -(-debt * E // (2000 * E)), f"{after}: settled at the price fixed at shutdown"
+        out.append(f"{after}: settled at the last good price")
+    return "; ".join(out)
+
+
 SCENARIOS = [v for k, v in sorted(globals().items()) if k.startswith("scenario_")]
 
 if __name__ == "__main__":

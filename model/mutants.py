@@ -150,6 +150,9 @@ MUTANTS = {
         "        if 2 * acc >= total:\n            return p", "        if 2 * acc > total:\n            return p"),
     "M63 pool source: the median is taken in construction order, unsorted (O7)": (
         "    for p, w in sorted(quotes, key=lambda q: q[0]):", "    for p, w in quotes:"),
+    "M64 a shutdown in a temporary oracle state leaves the reference price to a later definite status (X1)": (
+        "        return self.feed.last_good                 # a temporary state: the last good price; settlement never waits (X1)",
+        "        return None"),
     "M47 a redemption price below the price is used for the conversion as it is": (
         "        redemption_price = max(redemption_price or price, price)", "        redemption_price = redemption_price or price"),
 }
