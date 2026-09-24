@@ -66,10 +66,11 @@ fmt:
 	cd contracts && forge fmt && forge fmt fork
 
 # --- Base itself --------------------------------------------------------------------------------------------------- #
-# Public endpoints that serve state at the pinned block (archive), in order of how they answered a burst of 40 storage
-# reads: all 40, the fastest first. BASE_RPC_URL set in the environment is tried alone. A failing test fails on every
-# endpoint; only an unreachable endpoint moves on to the next.
-BASE_RPC_URLS ?= https://base.gateway.tenderly.co https://mainnet.base.org https://base-mainnet.public.blastapi.io
+# Public endpoints that serve state at the pinned block (archive); each answered a burst of 40 storage reads in full.
+# Blast first: Tenderly rate-limits a fork's first reads on a busy day, and an endpoint that answers `eth_blockNumber`
+# and then refuses the fork fails the run. BASE_RPC_URL set in the environment is tried alone. A failing test fails on
+# every endpoint; only an unreachable endpoint moves on to the next.
+BASE_RPC_URLS ?= https://base-mainnet.public.blastapi.io https://base.gateway.tenderly.co https://mainnet.base.org
 # the deployment rehearsal: DeployFeed, DeployDarli and an ordinary user, in real transactions on a local fork of Base
 rehearse:
 	cd contracts && bash script/rehearse.sh
