@@ -115,6 +115,8 @@ MUTANTS = {
     "M48 the liquidation surplus waits for settlement phase 1 when the owner also has settlement surplus": (
         "        amt = self.surplus[who]\n        self.surplus[who] = 0\n        self._coll_out(who, amt)",
         "        require(not self.gross_of[who] or self.surplus_keep is not None, \"phase 1\")\n        amt = self.surplus[who]\n        self.surplus[who] = 0\n        self._coll_out(who, amt)"),
+    "M49 a claim of one vault token empties every token's books (SPEC V7)": (
+        "        out = self.owed[who][k]\n        self.owed[who][k] = 0", "        out = self.owed[who][k]\n        self.owed[who] = [0, 0, 0]"),
     "M47 a redemption price below the price is used for the conversion as it is": (
         "        redemption_price = max(redemption_price or price, price)", "        redemption_price = redemption_price or price"),
 }

@@ -20,6 +20,7 @@ OPS = ["deposit", "withdraw", "fees", "incentive", "claim", "warp"]
 STEPS = 360
 START = 1_700_000_000
 LEDGER_LEN = 11 + 10 * N
+ALL = 3                                  # a claim's token: 0, 1, 2 alone (SPEC V7), or all three
 
 
 def build(rng):
@@ -32,7 +33,7 @@ def build(rng):
     ledger = []
     ok_by_kind = {k: 0 for k in OPS}
     bad_by_kind = {k: 0 for k in OPS}
-    st = dict(unassigned_rolled=0, idle_streamed=0, jit_entrant_got_no_old_fees=0)
+    st = dict(unassigned_rolled=0, idle_streamed=0, jit_entrant_got_no_old_fees=0, one_token_left_the_others=0)
 
     def snapshot():
         s = v.stream
@@ -74,12 +75,16 @@ def build(rng):
             v.notify_incentive(a)
         return record("incentive", fn, a=a)
 
-    def claim(i):
+    def claim(i, k=ALL):
         def fn():
-            out = v.claim(NAMES[i])
-            for k in range(3):
-                claimed[NAMES[i]][k] += out[k]
-        return record("claim", fn, i)
+            if k == ALL:
+                out = v.claim(NAMES[i])
+            else:
+                out = [0, 0, 0]
+                out[k] = v.claim(NAMES[i], k)                  # V7: one token alone
+            for j in range(3):
+                claimed[NAMES[i]][j] += out[j]
+        return record("claim", fn, i, b=k)
 
     def warp(dt):
         return record("warp", lambda: clock.warp(dt), a=dt)
@@ -97,6 +102,9 @@ def build(rng):
     deposit(0, 10**12)
     fees(3 * 10**6, 5 * 10**18)                                    # l0 receives these and the carried ones
     deposit(1, 3 * 10**12)                                         # a just-in-time entrant after the fees ...
+    before = list(v.pending(NAMES[0]))
+    claim(0, 1)                                                    # one token: the other two stay owed, to the wei
+    st["one_token_left_the_others"] += list(v.pending(NAMES[0])) == [before[0], 0, before[2]] and before[1] > 0
     claim(1)
     st["jit_entrant_got_no_old_fees"] += claimed["l1"][0] == 0 and claimed["l1"][1] == 0
     withdraw(0, 10**12 + 1)                                        # above the holder's shares: refused
@@ -120,7 +128,7 @@ def build(rng):
         elif r < 0.6:
             incentive(rng.choice([1, rng.randint(1, 10**9), rng.randint(1, 5_000) * E]))
         elif r < 0.75:
-            claim(i)
+            claim(i, rng.choice([0, 1, 2, ALL, ALL]))
         else:
             k = rng.random()
             if k < 0.15:
@@ -133,7 +141,7 @@ def build(rng):
         warp(1)
         claim(i)
     assert len(ledger) == len(ops["kind"]) * LEDGER_LEN
-    assert st["jit_entrant_got_no_old_fees"] == 1, st
+    assert st["jit_entrant_got_no_old_fees"] == 1 and st["one_token_left_the_others"] == 1, st
     assert min(ok_by_kind.values()) > 0 and bad_by_kind["withdraw"] > 0, (ok_by_kind, bad_by_kind)
     trace = {"ops": {k: [str(x) for x in vals] for k, vals in ops.items()}, "ledger": [str(x) for x in ledger],
              "ledgerLen": str(LEDGER_LEN), "config": {"holders": str(N), "start": str(START)}}

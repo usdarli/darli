@@ -1407,10 +1407,15 @@ class LPFeeVault:
         return tuple(self.owed[who][k] + self.shares[who] * (self.acc[k] - self.snap[who][k]) // self.PREC
                      for k in range(3))
 
-    def claim(self, who):
+    def claim(self, who, k=None):
+        """Token k alone (SPEC V7), or all three when k is None. A claim of one token leaves the others owed."""
         self._settle(who)
-        out = tuple(self.owed[who])
-        self.owed[who] = [0, 0, 0]
+        if k is None:
+            out = tuple(self.owed[who])
+            self.owed[who] = [0, 0, 0]
+            return out
+        out = self.owed[who][k]
+        self.owed[who][k] = 0
         return out
 
 

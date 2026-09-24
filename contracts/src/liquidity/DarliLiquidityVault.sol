@@ -21,12 +21,18 @@ import {LPFeeAccounting} from "./LPFeeAccounting.sol";
 ///         (`docs/SPEC.md` D4, V6). Nobody manages it: the range, the pool and the reward token are fixed at construction
 ///         and a different range is a different vault. Holders' shares are liquidity units. Swap fees are collected into
 ///         the vault and shared per share in each token; reward tokens paid in are streamed over fixed weekly epochs; a
-///         newcomer gets no part of earlier fees and a leaver keeps what he earned; principal and fees leave on separate
-///         paths. No management or performance fee.
+///         newcomer gets no part of earlier fees and a leaver keeps what he earned; principal is never mixed into the fee
+///         books. No management or performance fee.
+///         Payouts (V7): each token on its own, to a recipient the holder names. What the vault owes in the pool's two
+///         tokens it keeps as ERC-6909 claims inside the PoolManager, never as token balances, and a payout moves the token
+///         from the PoolManager straight to the recipient. A token that refuses a transfer to or from some address -- the
+///         holder's, the recipient's, even the vault's own -- therefore blocks only payouts of that token to that
+///         recipient: never a withdrawal of shares, never another token, never another holder.
 /// @dev    Deposits are refused while the pool price is outside the vault's range. That keeps liquidity from entering
 ///         outside the band; it is not protection against a price pushed inside it. The protection is each depositor's own
 ///         price bounds and maximum amounts, as for any swap. The core never learns this contract's address (D3).
-///         External calls: the PoolManager (unlock, modifyLiquidity, sync, settle, take, extsload) and the three tokens.
+///         External calls: the PoolManager (unlock, modifyLiquidity, sync, settle, mint, burn, take, extsload), the two
+///         pool tokens (a depositor's payment, straight to the PoolManager) and the reward token.
 contract DarliLiquidityVault is LPFeeAccounting, IUnlockCallback, ReentrancyGuardTransient {
     using SafeERC20 for IERC20;
     using BalanceDeltaLibrary for BalanceDelta;
@@ -45,16 +51,20 @@ contract DarliLiquidityVault is LPFeeAccounting, IUnlockCallback, ReentrancyGuar
     uint160 public immutable sqrtPriceUpper;
     IERC20 public immutable rewardToken;
 
+    /// principal withdrawn and not yet paid, per holder, in token0 and token1 (V7)
+    mapping(address => uint256[2]) internal _principal;
+
     enum Action {
         Deposit,
         Withdraw,
-        Collect
+        Collect,
+        Pay
     }
 
     event Deposited(address indexed who, uint256 liquidity, uint256 amount0, uint256 amount1);
     event Withdrawn(address indexed who, uint256 liquidity, uint256 amount0, uint256 amount1);
     event FeesCollected(uint256 fee0, uint256 fee1);
-    event Claimed(address indexed who, uint256 fee0, uint256 fee1, uint256 reward);
+    event Paid(address indexed who, uint256 indexed token, address to, uint256 principal, uint256 earned);
     event IncentivePaid(address indexed from, uint256 amount);
 
     error InvalidConfig();
@@ -65,6 +75,8 @@ contract DarliLiquidityVault is LPFeeAccounting, IUnlockCallback, ReentrancyGuar
     error AmountAboveMaximum(uint256 amount0, uint256 amount1);
     error AmountBelowMinimum(uint256 amount0, uint256 amount1);
     error NothingToCollect();
+    error NoSuchToken(uint256 token);
+    error ZeroRecipient();
 
     /// @param stable_ USDarli, at its predicted address
     /// @param halfWidthTicks the range: this many ticks either side of par, widened to the tick spacing (100 ticks is
@@ -140,7 +152,8 @@ contract DarliLiquidityVault is LPFeeAccounting, IUnlockCallback, ReentrancyGuar
         emit Deposited(msg.sender, liquidity, amount0, amount1);
     }
 
-    /// @notice Removes `liquidity`; the principal goes to the caller, the fees to every holder alike. Needs no price.
+    /// @notice Removes `liquidity`; the principal is credited to the caller (paid by `claim`), the fees go to every
+    ///         holder alike. Needs no price and moves no token out of the PoolManager, so no token can refuse it.
     function withdraw(uint128 liquidity, uint256 amount0Min, uint256 amount1Min)
         external
         nonReentrant
@@ -161,12 +174,42 @@ contract DarliLiquidityVault is LPFeeAccounting, IUnlockCallback, ReentrancyGuar
         poolManager.unlock(abi.encode(Action.Collect, address(0), uint128(0), uint256(0), uint256(0)));
     }
 
-    function claim() external nonReentrant returns (uint256[3] memory out) {
-        out = _claimOwed(msg.sender);
-        IERC20(Currency.unwrap(currency0)).safeTransfer(msg.sender, out[0]);
-        IERC20(Currency.unwrap(currency1)).safeTransfer(msg.sender, out[1]);
-        rewardToken.safeTransfer(msg.sender, out[2]);
-        emit Claimed(msg.sender, out[0], out[1], out[2]);
+    /// @notice Pays the caller's principal and earnings in one token -- 0 and 1 the pool's tokens, 2 the reward token --
+    ///         to `to`. The other tokens stay owed (V7).
+    function claim(uint256 token, address to) external nonReentrant returns (uint256 principal, uint256 earned) {
+        return _pay(token, to);
+    }
+
+    /// @notice All three tokens to `to` in one call. If one of them refuses the transfer, the call reverts and the
+    ///         per-token `claim` pays the others.
+    function claimAll(address to)
+        external
+        nonReentrant
+        returns (uint256[3] memory principal, uint256[3] memory earned)
+    {
+        for (uint256 k = 0; k < 3; k++) {
+            (principal[k], earned[k]) = _pay(k, to);
+        }
+    }
+
+    function principalOf(address who) external view returns (uint256[2] memory) {
+        return _principal[who];
+    }
+
+    function _pay(uint256 k, address to) internal returns (uint256 principal, uint256 earned) {
+        if (k > 2) revert NoSuchToken(k);
+        if (to == address(0)) revert ZeroRecipient();
+        earned = _claimOwed(msg.sender, k);
+        if (k == 2) {
+            if (earned > 0) rewardToken.safeTransfer(to, earned);
+        } else {
+            principal = _principal[msg.sender][k];
+            _principal[msg.sender][k] = 0;
+            if (principal + earned > 0) {
+                poolManager.unlock(abi.encode(Action.Pay, to, k, principal + earned, uint256(0)));
+            }
+        }
+        emit Paid(msg.sender, k, to, principal, earned);
     }
 
     /// @notice Anyone may pay reward tokens in: streamed to the holders over the next epoch.
@@ -181,8 +224,17 @@ contract DarliLiquidityVault is LPFeeAccounting, IUnlockCallback, ReentrancyGuar
 
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(poolManager)) revert NotPoolManager();
-        (Action action, address who, uint128 liquidity, uint256 bound0, uint256 bound1) =
-            abi.decode(data, (Action, address, uint128, uint256, uint256));
+        (Action action, address who, uint256 x, uint256 bound0, uint256 bound1) =
+            abi.decode(data, (Action, address, uint256, uint256, uint256));
+        if (action == Action.Pay) {
+            // x is the token, bound0 the amount: the vault's claim is burnt and the token goes from the PoolManager
+            // straight to the recipient; the vault's own address never touches the token
+            Currency c = x == 0 ? currency0 : currency1;
+            poolManager.burn(address(this), c.toId(), bound0);
+            poolManager.take(c, who, bound0);
+            return "";
+        }
+        uint128 liquidity = SafeCast.toUint128(x);
         int256 delta = action == Action.Deposit
             ? SafeCast.toInt256(uint256(liquidity))
             : (action == Action.Withdraw ? -SafeCast.toInt256(uint256(liquidity)) : int256(0));
@@ -194,43 +246,70 @@ contract DarliLiquidityVault is LPFeeAccounting, IUnlockCallback, ReentrancyGuar
         // the fees earned so far belong to the holders of before this change
         _collectFees(f0, f1);
         emit FeesCollected(f0, f1);
-        // principal = everything the call moved, less the fees
-        int256 p0 = int256(callerDelta.amount0()) - int256(f0);
-        int256 p1 = int256(callerDelta.amount1()) - int256(f1);
-        uint256 a0;
-        uint256 a1;
         if (action == Action.Deposit) {
-            (a0, a1) = (uint256(-p0), uint256(-p1));
-            if (a0 > bound0 || a1 > bound1) revert AmountAboveMaximum(a0, a1);
-            _addShares(who, liquidity);
-            _pull(currency0, who, a0);
-            _pull(currency1, who, a1);
-        } else if (action == Action.Withdraw) {
-            (a0, a1) = (uint256(p0), uint256(p1));
-            if (a0 < bound0 || a1 < bound1) revert AmountBelowMinimum(a0, a1);
-            _removeShares(who, liquidity);
+            return _onDeposit(who, liquidity, bound0, bound1, callerDelta, f0, f1);
         }
-        _settleWithPool(currency0, callerDelta.amount0());
-        _settleWithPool(currency1, callerDelta.amount1());
         if (action == Action.Withdraw) {
-            IERC20(Currency.unwrap(currency0)).safeTransfer(who, a0);
-            IERC20(Currency.unwrap(currency1)).safeTransfer(who, a1);
+            return _onWithdraw(who, liquidity, bound0, bound1, callerDelta, f0, f1);
         }
+        _keep(currency0, f0);
+        _keep(currency1, f1);
+        return abi.encode(uint256(0), uint256(0));
+    }
+
+    /// The principal is everything the call moved less the fees. The depositor pays it to the PoolManager directly; what
+    /// is left to the vault is the fees, kept there as its claims.
+    function _onDeposit(
+        address who,
+        uint128 liquidity,
+        uint256 max0,
+        uint256 max1,
+        BalanceDelta callerDelta,
+        uint256 f0,
+        uint256 f1
+    ) internal returns (bytes memory) {
+        uint256 a0 = uint256(int256(f0) - int256(callerDelta.amount0()));
+        uint256 a1 = uint256(int256(f1) - int256(callerDelta.amount1()));
+        if (a0 > max0 || a1 > max1) revert AmountAboveMaximum(a0, a1);
+        _addShares(who, liquidity);
+        _payIn(currency0, who, a0);
+        _payIn(currency1, who, a1);
+        _keep(currency0, f0);
+        _keep(currency1, f1);
         return abi.encode(a0, a1);
     }
 
-    function _pull(Currency c, address from, uint256 amount) internal {
-        if (amount > 0) IERC20(Currency.unwrap(c)).safeTransferFrom(from, address(this), amount);
+    /// Principal and fees both stay in the PoolManager as the vault's claims; the principal is credited to the leaver.
+    function _onWithdraw(
+        address who,
+        uint128 liquidity,
+        uint256 min0,
+        uint256 min1,
+        BalanceDelta callerDelta,
+        uint256 f0,
+        uint256 f1
+    ) internal returns (bytes memory) {
+        uint256 a0 = uint256(int256(callerDelta.amount0()) - int256(f0));
+        uint256 a1 = uint256(int256(callerDelta.amount1()) - int256(f1));
+        if (a0 < min0 || a1 < min1) revert AmountBelowMinimum(a0, a1);
+        _removeShares(who, liquidity);
+        _principal[who][0] += a0;
+        _principal[who][1] += a1;
+        _keep(currency0, a0 + f0);
+        _keep(currency1, a1 + f1);
+        return abi.encode(a0, a1);
     }
 
-    /// Pays what the vault owes the PoolManager, or takes what it is owed, for one currency.
-    function _settleWithPool(Currency c, int128 net) internal {
-        if (net < 0) {
-            poolManager.sync(c);
-            IERC20(Currency.unwrap(c)).safeTransfer(address(poolManager), uint256(int256(-net)));
-            poolManager.settle();
-        } else if (net > 0) {
-            poolManager.take(c, address(this), uint256(int256(net)));
-        }
+    /// The depositor's payment of one token, from its account to the PoolManager.
+    function _payIn(Currency c, address from, uint256 amount) internal {
+        if (amount == 0) return;
+        poolManager.sync(c);
+        IERC20(Currency.unwrap(c)).safeTransferFrom(from, address(poolManager), amount);
+        poolManager.settle();
+    }
+
+    /// What the PoolManager owes the vault in one token, kept there as the vault's ERC-6909 claim.
+    function _keep(Currency c, uint256 amount) internal {
+        if (amount > 0) poolManager.mint(address(this), c.toId(), amount);
     }
 }

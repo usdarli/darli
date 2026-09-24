@@ -27,8 +27,13 @@ contract LPFeeAccountingHarness is LPFeeAccounting {
         _notifyIncentive(amount);
     }
 
-    function claim(address who) external {
-        uint256[3] memory out = _claimOwed(who);
+    function claim(address who, uint256 token) external {
+        uint256[3] memory out;
+        if (token == 3) {
+            out = _claimOwed(who);
+        } else {
+            out[token] = _claimOwed(who, token);
+        }
         for (uint256 k = 0; k < 3; k++) {
             _claimed[who][k] += out[k];
         }
@@ -39,7 +44,7 @@ contract LPFeeAccountingHarness is LPFeeAccounting {
     }
 }
 
-/// SPEC V6 against the reference model: every operation of a model-driven trace (`contracts/script/lp_trace.py`) --
+/// SPEC V6, V7 against the reference model: every operation of a model-driven trace (`contracts/script/lp_trace.py`) --
 /// deposits, withdrawals, fees in both tokens, reward tokens streamed over fixed epochs, claims, time -- is replayed on
 /// the vault's accounting, and every acceptance, refusal and recorded number must match the model's.
 contract LPFeeAccountingTraceTest is Test {
@@ -66,7 +71,7 @@ contract LPFeeAccountingTraceTest is Test {
         else if (k == 1) data = abi.encodeCall(books.withdraw, (who, a));
         else if (k == 2) data = abi.encodeCall(books.fees, (a, b));
         else if (k == 3) data = abi.encodeCall(books.incentive, (a));
-        else data = abi.encodeCall(books.claim, (who));
+        else data = abi.encodeCall(books.claim, (who, b));
         (ok,) = address(books).call(data);
     }
 

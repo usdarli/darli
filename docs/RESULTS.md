@@ -11,14 +11,14 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 
 | file | hash |
 | --- | --- |
-| contracts/fork/BaseFork.t.sol | `1d14017c8fb279ac` |
+| contracts/fork/BaseFork.t.sol | `cc9f492eaa2d231c` |
 | contracts/foundry.toml | `8e5576a6ce9c627f` |
 | contracts/remappings.txt | `92d8fe713d1d0c46` |
 | contracts/script/DarliSystem.s.sol | `1513ffdabf125a6b` |
 | contracts/script/branch_trace.py | `82843e4c3260e94c` |
 | contracts/script/check_test_count.py | `fce577ae0f91f146` |
 | contracts/script/export_vectors.py | `409b859cf07cda01` |
-| contracts/script/lp_trace.py | `0494d540dd3b75ff` |
+| contracts/script/lp_trace.py | `b2a588bff29381c0` |
 | contracts/script/routing_trace.py | `404ae6afdd020d37` |
 | contracts/script/settle_trace.py | `7db8d6ebd5870cc3` |
 | contracts/script/sp_trace.py | `0ba08268a534e3d9` |
@@ -44,8 +44,8 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | contracts/src/libraries/Constants.sol | `b9a2d11babb14180` |
 | contracts/src/libraries/EpochStream.sol | `92372552f1e73798` |
 | contracts/src/libraries/FixedPointMath.sol | `ceda93baa0ece807` |
-| contracts/src/liquidity/DarliLiquidityVault.sol | `21e2dbce0a374605` |
-| contracts/src/liquidity/LPFeeAccounting.sol | `7760f0bb2df93a28` |
+| contracts/src/liquidity/DarliLiquidityVault.sol | `baf9fc2d8663acb5` |
+| contracts/src/liquidity/LPFeeAccounting.sol | `5bf16831ee838b7e` |
 | contracts/src/oracle/ChainlinkAdapters.sol | `7dbadd9f5f79d2d7` |
 | contracts/src/oracle/SingleSourcePriceFeed.sol | `41aa13e9ad6b65cc` |
 | contracts/src/revenue/DarliStaking.sol | `9f96ba55546198b3` |
@@ -61,7 +61,7 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | contracts/test/DarliStaking.trace.t.sol | `fc6ef201f9d70b7a` |
 | contracts/test/DarliSystem.t.sol | `40308903b35b6d27` |
 | contracts/test/FixedPointMath.t.sol | `8727fe555bb91e53` |
-| contracts/test/LPFeeAccounting.trace.t.sol | `318e34068046e549` |
+| contracts/test/LPFeeAccounting.trace.t.sol | `0110b18fdf277ef9` |
 | contracts/test/Liquidation.t.sol | `98c49a26b1b94709` |
 | contracts/test/LiquidityVault.t.sol | `21b578a106e0bffc` |
 | contracts/test/OracleFeed.t.sol | `50d9e9cabb388194` |
@@ -76,7 +76,7 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | contracts/test/mocks/OracleMocks.sol | `1edf7f875d9e124d` |
 | contracts/test/mocks/PoolMocks.sol | `1551dd98393e5ddf` |
 | contracts/test/vectors/branch_trace.json | `b8a0753d93ec4170` |
-| contracts/test/vectors/lp_trace.json | `caa5b3576a6b6349` |
+| contracts/test/vectors/lp_trace.json | `d8cd9e96c377a33f` |
 | contracts/test/vectors/math.json | `ee94c997bb9c3d9e` |
 | contracts/test/vectors/routing_trace.json | `27604085e8fe4e08` |
 | contracts/test/vectors/settle_trace_absorb.json | `6392e83414bfeadb` |
@@ -86,7 +86,7 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | contracts/test/vectors/sorted_list.json | `aee5b22cb952dcd8` |
 | contracts/test/vectors/stability_pool.json | `10988275992dda22` |
 | contracts/test/vectors/staking_trace.json | `46d5ccd5f5b8bf6c` |
-| docs/SPEC.md | `f736d1d51dcd848e` |
+| docs/SPEC.md | `f1a0acc1e0e6adbe` |
 | model/beta_pilot_compare.py | `64251462b830a798` |
 | model/check_figures.py | `a020fc9d36346070` |
 | model/check_manifest.py | `0fea01d4d911a059` |
@@ -94,17 +94,17 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | model/figures.py | `369609e969c9154a` |
 | model/fuzz.py | `4f1e47e68c2212d3` |
 | model/fuzz_oracle.py | `4d286d579088865a` |
-| model/model.py | `4bc52861ade96d2f` |
-| model/mutants.py | `24d99685eedff217` |
+| model/model.py | `f248461d99fe5fc7` |
+| model/mutants.py | `42c9649cc166f696` |
 | model/pilot_sweep.py | `0c455b594abe902b` |
 | model/results/beta_pilot_compare.jsonl | `fa07685fba612226` |
-| model/results/figures.json | `9f2e9bb3fea7efe8` |
+| model/results/figures.json | `f3ce8b15b52ea7fb` |
 | model/results/pilot_seeds.jsonl | `c2a43f83c43d0b34` |
 | model/results/pilot_summary.jsonl | `2f2123cc4634717f` |
 | model/spec_check.py | `3f5c48a3f3479574` |
 | model/study_figures.py | `b48e908d52ad4f07` |
 | model/test_econ_sim.py | `2524e340610edd23` |
-| model/test_scenarios.py | `9af43ce898e4b3c1` |
+| model/test_scenarios.py | `d7ec7b9f8befc70f` |
 
 ### Submodules, at the commit this release pins
 
@@ -122,7 +122,7 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | simulator self-tests | `python3 test_econ_sim.py` | Python 3.12 | <!-- fig:econ_sim.econ_sim_passed -->8<!-- /fig -->/<!-- fig:econ_sim.econ_sim_total -->8<!-- /fig --> passed |
 | accounting fuzzer | `python3 fuzz.py 30 300` | Python 3.12 | no property violated (max eps <!-- fig:fuzz.fuzz_max_eps_wei -->17<!-- /fig --> wei); <!-- fig:fuzz.fuzz_troves_rewarded -->51<!-- /fig --> Troves rewarded; every operation met its coverage floor |
 | oracle fuzzer | `python3 fuzz_oracle.py 200 150` | Python 3.12 | no property violated |
-| mutants | `python3 mutants.py` | Python 3.12 | <!-- fig:mutants.mutants_total -->38<!-- /fig --> run, <!-- fig:mutants.mutants_killed -->38<!-- /fig --> killed, <!-- fig:mutants.mutants_survived -->0<!-- /fig --> survived, <!-- fig:mutants.mutants_invalid -->0<!-- /fig --> invalid |
+| mutants | `python3 mutants.py` | Python 3.12 | <!-- fig:mutants.mutants_total -->39<!-- /fig --> run, <!-- fig:mutants.mutants_killed -->39<!-- /fig --> killed, <!-- fig:mutants.mutants_survived -->0<!-- /fig --> survived, <!-- fig:mutants.mutants_invalid -->0<!-- /fig --> invalid |
 | spec mapping | `python3 spec_check.py` | Python 3.12 | every scenario, every mutant and every Foundry test that `docs/SPEC.md` cites exists, and every scenario and mutant is cited |
 | manifest | `python3 check_manifest.py` | Python 3.12 | all hashes match, all required files listed |
 | figures | `python3 check_figures.py` | Python 3.12 | every figure quoted below matches the run that produced it |
@@ -157,7 +157,7 @@ Stability Pool deposits <!-- fig:fuzz.fuzz_ops_sp_dep -->61<!-- /fig -->, settle
 settlement of a written-off Trove <!-- fig:fuzz.fuzz_ops_late -->8<!-- /fig -->, late-recovery claims <!-- fig:fuzz.fuzz_ops_claim_late -->11<!-- /fig -->; <!-- fig:fuzz.fuzz_shutdowns -->33<!-- /fig --> branches shut down over the run.
 
 ### What the random testers kill on their own
-Of <!-- fig:mutants.mutants_total -->38<!-- /fig --> mutants, all <!-- fig:mutants.mutants_killed -->38<!-- /fig --> are killed, but only <!-- fig:mutants.mutants_killed_by_a_fuzzer -->13<!-- /fig --> are killed by a random tester with no scenario at all
+Of <!-- fig:mutants.mutants_total -->39<!-- /fig --> mutants, all <!-- fig:mutants.mutants_killed -->39<!-- /fig --> are killed, but only <!-- fig:mutants.mutants_killed_by_a_fuzzer -->13<!-- /fig --> are killed by a random tester with no scenario at all
 (<!-- fig:mutants.mutants_killed_by_fuzz -->7<!-- /fig --> by the accounting fuzzer, <!-- fig:mutants.mutants_killed_by_fuzz_oracle -->6<!-- /fig --> by the
 oracle fuzzer). The fuzzers are invariant checkers, not behavioural oracles: the scenarios carry the rest, and the
 conformance map in `docs/SPEC.md` 12 is written against these counts rather than against the mere existence of a fuzzer.

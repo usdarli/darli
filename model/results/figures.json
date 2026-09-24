@@ -60,12 +60,12 @@
   },
   "mutants": {
     "mutants_invalid": "0",
-    "mutants_killed": "38",
+    "mutants_killed": "39",
     "mutants_killed_by_a_fuzzer": "13",
     "mutants_killed_by_fuzz": "7",
     "mutants_killed_by_fuzz_oracle": "6",
     "mutants_survived": "0",
-    "mutants_total": "38"
+    "mutants_total": "39"
   },
   "scenarios": {
     "claim_order_earlier_claims": "100",

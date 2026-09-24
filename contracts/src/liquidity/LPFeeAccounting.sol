@@ -84,6 +84,13 @@ abstract contract LPFeeAccounting {
         delete _owed[who];
     }
 
+    /// V7: token `k` alone; the other two stay owed.
+    function _claimOwed(address who, uint256 k) internal returns (uint256 out) {
+        _settle(who);
+        out = _owed[who][k];
+        _owed[who][k] = 0;
+    }
+
     // --- views --------------------------------------------------------------------------------------------------------
 
     /// @notice what `who` could claim now: fees in token0, fees in token1, reward tokens.

@@ -687,7 +687,9 @@ def scenario_19_lp_vault_fee_accounting():
     v.withdraw("early", 1_000)                                 # full exit
     owed = v.pending("early")
     assert owed[:2] == (300 + 100, 9 + 10) and 69_990 <= owed[2] <= 70_000, owed   # still claimable after the exit
-    assert v.claim("early") == owed and v.pending("early") == (0, 0, 0)
+    # V7: one token at a time; a claim of one leaves the others owed, to the wei
+    assert v.claim("early", 1) == owed[1] and v.pending("early") == (owed[0], 0, owed[2])
+    assert v.claim("early") == (owed[0], 0, owed[2]) and v.pending("early") == (0, 0, 0)
     assert v.pending("late")[:2] == (900, 90)
     assert v.principal_out["early"] == 1_000, "principal is tracked apart from fees"
     # enter with 99% of the shares right before a funding, leave right after
