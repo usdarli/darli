@@ -350,6 +350,7 @@ contract BranchManagerTest is BranchFixture {
             frontends: IFrontendRegistry(address(registry)),
             escrow: escrow,
             collateralRegistry: address(collRegistry),
+            settlement: address(settlement),
             mcr: 110 * PCT,
             ccr: 110 * PCT, // MCR < CCR violated
             scr: 110 * PCT,
@@ -373,6 +374,10 @@ contract BranchManagerTest is BranchFixture {
         new BranchManager(c);
         c.escrow = escrow;
         c.collateralRegistry = address(0); // a branch nobody could redeem from
+        vm.expectRevert(BranchManager.InvalidConfig.selector);
+        new BranchManager(c);
+        c.collateralRegistry = address(collRegistry);
+        c.settlement = address(0); // a branch nobody could settle
         vm.expectRevert(BranchManager.InvalidConfig.selector);
         new BranchManager(c);
     }

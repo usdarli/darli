@@ -14,6 +14,8 @@ import {IFrontendRegistry, ICollateralVault, ITroveNFT, IRateSortedList} from ".
 import {IStableToken} from "../src/interfaces/IStableToken.sol";
 import {StabilityPool} from "../src/core/StabilityPool.sol";
 import {CollateralRegistry} from "../src/core/CollateralRegistry.sol";
+import {BranchSettlement} from "../src/core/BranchSettlement.sol";
+import {ISettlementHooks} from "../src/interfaces/IBranchManager.sol";
 import {IBranchRedemption} from "../src/interfaces/IBranchManager.sol";
 import {MockCollateral, MockPriceFeed} from "./mocks/BranchMocks.sol";
 
@@ -35,6 +37,7 @@ abstract contract BranchFixture is Test {
     StabilityPool sp;
     BranchManager manager;
     CollateralRegistry collRegistry;
+    BranchSettlement settlement;
     address escrow = makeAddr("InterestEscrow");
 
     function account(uint256 i) internal pure returns (address) {
@@ -53,7 +56,7 @@ abstract contract BranchFixture is Test {
         feed = new MockPriceFeed(2000 * E);
         weth = new MockCollateral();
         uint256 n = vm.getNonce(address(this));
-        address predicted = vm.computeCreateAddress(address(this), n + 5);
+        address predicted = vm.computeCreateAddress(address(this), n + 6);
         IBranchRedemption[] memory branches = new IBranchRedemption[](1);
         branches[0] = IBranchRedemption(predicted);
         collRegistry = new CollateralRegistry(IStableToken(address(stable)), branches, BETA_WAD, INITIAL_BASE_RATE);
@@ -61,6 +64,7 @@ abstract contract BranchFixture is Test {
         nft = new TroveNFT(predicted, "Darli Trove (WETH)", "DTROVE-WETH");
         list = new RateSortedList(predicted);
         sp = new StabilityPool(stable, weth, IBranchManager(predicted));
+        settlement = new BranchSettlement(ISettlementHooks(predicted));
         manager = new BranchManager(
             BranchConfig({
                 stable: IStableToken(address(stable)),
@@ -73,6 +77,7 @@ abstract contract BranchFixture is Test {
                 frontends: IFrontendRegistry(address(registry)),
                 escrow: escrow,
                 collateralRegistry: address(collRegistry),
+                settlement: address(settlement),
                 mcr: 110 * PCT,
                 ccr: 150 * PCT,
                 scr: 110 * PCT,

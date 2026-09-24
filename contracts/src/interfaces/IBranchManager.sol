@@ -33,6 +33,10 @@ interface IBranchManager {
     function pendingAggInterest() external view returns (uint256);
     function lastZombieTroveId() external view returns (uint256);
     function debtCap() external view returns (uint256);
+    /// @notice open Troves at shutdown not yet settled or written off (SPEC X2, X5); 0 on a live branch.
+    function unsettled() external view returns (uint256);
+    /// @notice the reference price of the settlement (SPEC X1); 0 until it is fixed.
+    function settlePrice() external view returns (uint256);
 }
 
 /// @notice SPEC §6.2–§6.4.
@@ -58,7 +62,8 @@ interface IBranchRedemption {
     function collateralRegistry() external view returns (address);
 }
 
-/// @notice SPEC §9: staged settlement after a shutdown; all permissionless.
+/// @notice SPEC §9: staged settlement after a shutdown, one contract per branch (the branch itself is near the size
+///         limit). All permissionless; claims of the pot also serve the live-branch bad-debt cases of SPEC L5.
 interface ISettlement {
     /// @notice phase 1: settles one Trove at the reference price fixed at shutdown; pays the caller the Trove's remaining gas deposit (X2).
     function settleTrove(uint256 troveId) external returns (uint256 debt, uint256 contribution, uint256 surplus);
@@ -69,7 +74,34 @@ interface ISettlement {
     /// @notice phase 2: burns `amount`, registers claim units even when the pot is empty, pays the common rate plus any late share (X8).
     function redeemBadDebtColl(uint256 amount, uint256 minCollOut) external returns (uint256 collOut);
     /// @notice same with an empty pot (live-branch dust case, SPEC L5).
-    function repayBadDebt(uint256 amount) external;
+    function repayBadDebt(uint256 amount) external returns (uint256 collOut);
     /// @notice whatever written-off Troves handed over after phase 1, for the caller's exercised claim units (X9).
     function claimLate() external returns (uint256 collOut);
+    /// @notice the caller's kept share of the surplus of his settled Troves, once phase 1 is complete (X11). The surplus
+    ///         of a liquidation is claimed from the branch, at any time (L3).
+    function claimSurplus() external returns (uint256 collOut);
+    /// @notice only the branch, when it shuts down with no open Trove: phase 1 is complete at once (X6).
+    function onShutdownWithNoTroves() external;
+}
+
+/// @notice The branch's side of settlement: the ledger moves that only its BranchSettlement may ask for. Each is one step
+///         of the model's settlement code, in the model's order; none of them scans the Troves.
+interface ISettlementHooks {
+    /// @notice the reference price (X1): fixed at shutdown, or now from a definite oracle status; reverts without one.
+    function fixSettlePrice() external returns (uint256);
+    /// @notice closes a Trove as settled and pays its remaining gas deposit to `caller`. Timely (not written off): touches
+    ///         it first and moves its debt and its contribution to the pot, and one Trove fewer is unsettled.
+    function settleOut(uint256 troveId, address caller, bool timely)
+        external
+        returns (uint256 debt, uint256 coll, address owner);
+    /// @notice the Trove's debt leaves the Trove ledger and becomes a claim; half the gas deposit to `caller` (X5).
+    function writeOffOut(uint256 troveId, address caller) external returns (uint256 debt);
+    /// @notice reverses a write-off before phase 1 ends (X5).
+    function undoWriteOff(uint256 troveId, uint256 debt) external;
+    /// @notice the settlement surplus absorbed into the pot when phase 1 ends (X6).
+    function addToPot(uint256 coll) external;
+    /// @notice burns `amount` from `who` and pays his pro-rata share of the pot (X8).
+    function burnClaim(address who, uint256 amount, uint256 minCollOut) external returns (uint256 collOut);
+    /// @notice pays collateral the settlement accounts hold (late shares, kept surplus).
+    function settlementCollOut(address to, uint256 amount) external;
 }

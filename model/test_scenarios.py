@@ -1559,6 +1559,43 @@ def scenario_34_redemption_price_never_below_the_price():
     return "redemption price 1,600 under a price of 1,760 converted at 1,760; 1,900 above it used as it is"
 
 
+def scenario_35_liquidation_surplus_is_not_held_by_settlement():
+    """SPEC L3 / X11: an owner has the surplus of a liquidated Trove and, after a shutdown, the surplus of a settled one.
+    Until phase 1 ends only the settlement surplus waits; the liquidation surplus is his at once. Expectations from the
+    rules: liquidation surplus = coll - 0.5 % bonus - debt x 1.05 / price (the pool absorbs the whole debt); settlement
+    surplus = coll - ceil(debt / settlePrice), kept in full because no Trove is under water."""
+    clock, s, b, weth, feed = setup()
+    fund(weth, "a", 100 * E)
+    fund(weth, "b", 1000 * E)
+    t1 = b.open_trove("a", 20 * E, 20_000 * E, 5 * PCT)
+    t2 = b.open_trove("a", 40 * E, 20_000 * E, 5 * PCT)
+    t3 = b.open_trove("b", 400 * E, 60_000 * E, 5 * PCT)
+    b.sp.deposit("b", 30_000 * E)
+    d1, c1 = b.debt_now(b.troves[t1]), b.coll_now(b.troves[t1])
+    price = 108 * PCT * d1 // c1                                   # t1 at 108 %: between the pool's premium and MCR
+    feed.price = price
+    b.liquidate(t1, "keeper")
+    expected_liq = c1 - c1 * WAD // 200 // WAD - d1 * (WAD + 5 * PCT) // price
+    assert b.surplus["a"] == expected_liq > 0
+    feed.status = FAILED
+    b.poke_oracle()                                                # shutdown; the settlement price is the last good one
+    assert b.shutdown_at and b.settle_price == price
+    d2, c2 = b.debt_now(b.troves[t2]), b.coll_now(b.troves[t2])
+    b.settle_trove(t2, "keeper")
+    assert b.unsettled == 1, "t3 is still unsettled: phase 1 is not complete"
+    assert "phase 1" in expect_revert(b.claim_surplus, "a"), "both at once: refused while the settlement part waits"
+    assert "phase 1" in expect_revert(b.claim_settlement_surplus, "a")
+    got = weth.bal["a"]
+    assert b.claim_liquidation_surplus("a") == expected_liq and weth.bal["a"] - got == expected_liq, \
+        "L3: the liquidation surplus is claimable during phase 1"
+    b.settle_trove(t3, "keeper")
+    expected_settle = c2 - (d2 * WAD + price - 1) // price
+    assert b.claim_settlement_surplus("a") == expected_settle, "X11: kept in full when no Trove is under water"
+    assert b.claim_surplus("a") == 0, "nothing is paid twice"
+    check_invariants(s, "35")
+    return "liquidation surplus paid during phase 1; settlement surplus after it"
+
+
 SCENARIOS = [v for k, v in sorted(globals().items()) if k.startswith("scenario_")]
 
 if __name__ == "__main__":

@@ -112,6 +112,9 @@ MUTANTS = {
         "            if t.status == ZOMBIE:\n                # SPEC B4: back at the minimum", "            if False:\n                # SPEC B4: back at the minimum"),
     "M46 a redemption request above the redeemer's balance is accepted and truncated instead of refused": (
         "        require(self.stable.bal[redeemer] >= amount, \"redemption", "        require(True or self.stable.bal[redeemer] >= amount, \"redemption"),
+    "M48 the liquidation surplus waits for settlement phase 1 when the owner also has settlement surplus": (
+        "        amt = self.surplus[who]\n        self.surplus[who] = 0\n        self._coll_out(who, amt)",
+        "        require(not self.gross_of[who] or self.surplus_keep is not None, \"phase 1\")\n        amt = self.surplus[who]\n        self.surplus[who] = 0\n        self._coll_out(who, amt)"),
     "M47 a redemption price below the price is used for the conversion as it is": (
         "        redemption_price = max(redemption_price or price, price)", "        redemption_price = redemption_price or price"),
 }

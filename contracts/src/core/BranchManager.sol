@@ -5,7 +5,13 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
-import {IBranchManager, ILiquidations, IBranchRedemption} from "../interfaces/IBranchManager.sol";
+import {
+    IBranchManager,
+    ILiquidations,
+    IBranchRedemption,
+    ISettlement,
+    ISettlementHooks
+} from "../interfaces/IBranchManager.sol";
 import {IBorrowerGateway} from "../interfaces/IBorrowerGateway.sol";
 import {IStableToken} from "../interfaces/IStableToken.sol";
 import {IPriceFeed} from "../interfaces/IPriceFeed.sol";
@@ -36,6 +42,7 @@ struct BranchConfig {
     IFrontendRegistry frontends;
     address escrow;
     address collateralRegistry; // the system's redemption router: the only caller of redeemFromBranch
+    address settlement; // this branch's BranchSettlement: the only caller of the settlement hooks
     uint256 mcr;
     uint256 ccr;
     uint256 scr;
@@ -61,8 +68,16 @@ struct BranchConfig {
 ///         burn), the price feed (risk-increasing operations and shutdown triggers only), the Stability Pool (yield it is
 ///         owed), the frontend registry (the interfaces' share), the Trove NFT (ownership) and the redemption list. All
 ///         are contracts of this deployment except the collateral token and the feed; none of them calls into user code.
-///         Settlement after a shutdown (ISettlement) is a later stage.
-contract BranchManager is IBranchManager, IBorrowerGateway, ILiquidations, IBranchRedemption, ReentrancyGuardTransient {
+///         Settlement after a shutdown is its own contract (ISettlement, BranchSettlement): it keeps the settlement
+///         accounts and asks this branch, through ISettlementHooks, for every move of the ledger, the Troves and the vault.
+contract BranchManager is
+    IBranchManager,
+    IBorrowerGateway,
+    ILiquidations,
+    IBranchRedemption,
+    ISettlementHooks,
+    ReentrancyGuardTransient
+{
     using SafeERC20 for IERC20;
 
     // --- wiring (immutable) -------------------------------------------------------------------------------------------
@@ -76,6 +91,7 @@ contract BranchManager is IBranchManager, IBorrowerGateway, ILiquidations, IBran
     IFrontendRegistry public immutable frontends;
     address public immutable escrow;
     address public immutable collateralRegistry;
+    address public immutable settlement;
 
     // --- parameters (immutable; SPEC §2) ------------------------------------------------------------------------------
     uint256 public immutable mcr;
@@ -135,8 +151,8 @@ contract BranchManager is IBranchManager, IBorrowerGateway, ILiquidations, IBran
     constructor(BranchConfig memory c) {
         if (
             !(c.scr <= c.mcr && c.mcr < c.ccr) || c.minRate > c.maxRate || c.spShare > WAD || c.escrow == address(0)
-                || c.collateralRegistry == address(0) || !(c.penSp <= c.penRedist && c.penRedist <= c.mcr - WAD)
-                || c.liqBonus > WAD
+                || c.collateralRegistry == address(0) || c.settlement == address(0)
+                || !(c.penSp <= c.penRedist && c.penRedist <= c.mcr - WAD) || c.liqBonus > WAD
         ) {
             revert InvalidConfig();
         }
@@ -150,6 +166,7 @@ contract BranchManager is IBranchManager, IBorrowerGateway, ILiquidations, IBran
         frontends = c.frontends;
         escrow = c.escrow;
         collateralRegistry = c.collateralRegistry;
+        settlement = c.settlement;
         mcr = c.mcr;
         ccr = c.ccr;
         scr = c.scr;
@@ -544,6 +561,99 @@ contract BranchManager is IBranchManager, IBorrowerGateway, ILiquidations, IBran
         emit Redeemed(redeemer, redeemed, collOut, feeRate);
     }
 
+    // =================================================================================================================
+    // Settlement hooks (ISettlementHooks, SPEC 9): only this branch's BranchSettlement
+    // =================================================================================================================
+
+    function fixSettlePrice() external nonReentrant returns (uint256 price) {
+        _onlySettlement();
+        if (_ledger.shutdownAt == 0) revert BranchNotShutDown();
+        price = settlePrice;
+        if (price == 0) {
+            price = _shutdownPrice(); // 0 while the oracle is in a temporary state: the settlement waits (X1)
+            if (price == 0) revert SettlePriceNotFixed();
+            settlePrice = price;
+        }
+    }
+
+    function settleOut(uint256 troveId, address caller, bool timely)
+        external
+        nonReentrant
+        returns (uint256 debt, uint256 coll, address owner)
+    {
+        _onlySettlement();
+        _requireOpen(troveId);
+        Trove storage t = _troves[troveId];
+        if (timely) {
+            _touch(troveId, 0, 0, t.annualRate, 0); // pending redistribution; interest stopped at shutdown
+        }
+        debt = t.recordedDebt;
+        coll = t.coll;
+        owner = nft.ownerOf(troveId);
+        _removeTrove(troveId, TroveStatus.ClosedBySettlement);
+        _payGasDeposit(troveId, caller);
+        if (timely) {
+            // the Trove's debt becomes a claim of all holders; its collateral worth that debt, rounded up, joins the pot
+            uint256 need = FixedPointMath.ceilDiv(debt * WAD, settlePrice);
+            _ledger.badDebt += debt;
+            _ledger.badDebtColl += _min(coll, need);
+            unsettled--;
+        }
+        _sweepDustIfEmpty();
+    }
+
+    function writeOffOut(uint256 troveId, address caller) external nonReentrant returns (uint256 debt) {
+        _onlySettlement();
+        _requireOpen(troveId);
+        debt = _debtNow(troveId);
+        _touch(troveId, -SafeCast.toInt256(debt), 0, _troves[troveId].annualRate, 0); // out of the Trove ledger ...
+        _ledger.aggDebt += debt; // ... no token burned, so the branch's debt is unchanged ...
+        _ledger.badDebt += debt; // ... and it is a claim on the pot
+        unsettled--;
+        _payGasDepositPart(troveId, caller, gasDeposit / 2); // half for this step, the rest for the settlement
+    }
+
+    function undoWriteOff(uint256 troveId, uint256 debt) external nonReentrant {
+        _onlySettlement();
+        _ledger.badDebt -= debt;
+        _ledger.aggDebt -= debt;
+        _touch(troveId, SafeCast.toInt256(debt), 0, _troves[troveId].annualRate, 0);
+        unsettled++;
+    }
+
+    function addToPot(uint256 coll) external nonReentrant {
+        _onlySettlement();
+        _ledger.badDebtColl += coll;
+    }
+
+    function burnClaim(address who, uint256 amount, uint256 minCollOut)
+        external
+        nonReentrant
+        returns (uint256 collOut)
+    {
+        _onlySettlement();
+        if (unsettled != 0) revert SettlementPhaseOneOpen(); // nobody is paid while a Trove is unsettled (X4)
+        uint256 bad = _ledger.badDebt;
+        if (amount == 0 || amount > bad) revert ClaimOutOfRange();
+        // pro rata, rounded down; the last claim takes the remainder (L5, X10)
+        collOut = amount == bad ? _ledger.badDebtColl : _ledger.badDebtColl * amount / bad;
+        if (collOut < minCollOut) revert CollOutBelowMinimum(collOut, minCollOut);
+        stable.burn(who, amount); // the account that initiated the claim (SPEC 10.5)
+        _ledger.badDebt = bad - amount;
+        _ledger.aggDebt -= amount;
+        _ledger.badDebtColl -= collOut;
+        _collOut(who, collOut);
+    }
+
+    function settlementCollOut(address to, uint256 amount) external nonReentrant {
+        _onlySettlement();
+        _collOut(to, amount);
+    }
+
+    function _onlySettlement() internal view {
+        if (msg.sender != settlement) revert NotAuthorized();
+    }
+
     function _min(uint256 a, uint256 b) internal pure returns (uint256) {
         return a < b ? a : b;
     }
@@ -814,9 +924,13 @@ contract BranchManager is IBranchManager, IBorrowerGateway, ILiquidations, IBran
 
     /// Pays from THIS Trove's remaining deposit only; a Trove can never pay more than it posted (SPEC B13).
     function _payGasDeposit(uint256 troveId, address to) internal {
-        uint256 amount = gasLeft[troveId];
+        _payGasDepositPart(troveId, to, type(uint256).max);
+    }
+
+    function _payGasDepositPart(uint256 troveId, address to, uint256 part) internal {
+        uint256 amount = _min(gasLeft[troveId], part);
         if (amount == 0) return;
-        gasLeft[troveId] = 0;
+        gasLeft[troveId] -= amount;
         gasPool -= amount;
         _collOut(to, amount);
     }
@@ -841,6 +955,9 @@ contract BranchManager is IBranchManager, IBorrowerGateway, ILiquidations, IBran
         _ledger.aggWeightedDebtSum = 0;
         unsettled = nOpen;
         settlePrice = _shutdownPrice();
+        if (unsettled == 0) {
+            ISettlement(settlement).onShutdownWithNoTroves(); // nothing to settle: phase 1 is complete at once (X6)
+        }
         emit Shutdown(block.timestamp, settlePrice);
     }
 

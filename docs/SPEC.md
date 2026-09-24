@@ -119,7 +119,7 @@ A Trove is an NFT with `coll`, `recordedDebt`, `annualRate`, `stake`, redistribu
 ### 6.2 Liquidation
 - **L1** Anyone may liquidate a Trove with ICR < MCR, given a `Valid` price, while the branch is live. A zero-debt Trove is not liquidatable. (F, Foundry `test_onlyATroveBelowMcrWithAValidPriceOnALiveBranchIsLiquidated`, `test_diff_branchTraceMatchesModel`)
 - **L2** Waterfall: offset against the Stability Pool at ≤ 5 % premium; remainder redistributed to active Troves at ≤ 10 % premium; if no recipient exists, remainder → `badDebt` + `badDebtColl` and the branch shuts down. Premiums are caps: an under-water Trove hands over everything it has. (S-08, S-10, Foundry `test_poolAbsorbsFirstAndTheRestIsRedistributed`, `test_premiumsAreCapsAnUnderwaterTroveHandsOverEverything`, `test_theLastTroveWithAnEmptyPoolBecomesBadDebtAndShutsTheBranch`)
-- **L3** Liquidator receives 0.5 % of collateral (cap 2 ETH) from the whole collateral, plus the Trove's gas deposit. Surplus after full settlement goes to the owner (`surplus`), claimable any time, without a price. (S-10, S-27, Foundry `test_liquidatorReceivesTheCappedBonusAndTheGasDeposit`, `test_surplusBelongsToTheOwnerAndIsClaimedWithoutAPrice`)
+- **L3** Liquidator receives 0.5 % of collateral (cap 2 ETH) from the whole collateral, plus the Trove's gas deposit. Surplus after full settlement goes to the owner (`surplus`), claimable any time, without a price, and apart from any settlement surplus (X11): an owner who also has one waiting for phase 1 to end still claims this now. (S-10, S-27, S-35, M-48, Foundry `test_theLiquidationSurplusIsClaimableDuringPhaseOne`, Foundry `test_liquidatorReceivesTheCappedBonusAndTheGasDeposit`, `test_surplusBelongsToTheOwnerAndIsClaimedWithoutAPrice`)
 
 ### 6.3 Redistribution
 - **L4** Accumulators `L_coll`, `L_debt` at `L_PRECISION = 1e36` with carried remainders; corrected stakes and system snapshots so that interaction order cannot shift shares. (S-10, Foundry `test_diff_branchTraceMatchesModel`, `invariant_ledgersAgree`; no model mutant yet targets the accumulators themselves)
@@ -160,26 +160,26 @@ A Trove is an NFT with `coll`, `recordedDebt`, `annualRate`, `stake`, redistribu
 ## 9. Settlement after a shutdown
 
 ### 9.1 Reference price
-- **X1** `settlePrice` is fixed once: the `Valid` price at shutdown, or `lastGoodPrice` after an oracle failure; if no definite status exists at shutdown, fixed at the first settlement. Later market moves change nothing. (S-02, S-15a, S-23, M-31)
+- **X1** `settlePrice` is fixed once: the `Valid` price at shutdown, or `lastGoodPrice` after an oracle failure; if no definite status exists at shutdown, fixed at the first settlement. Later market moves change nothing; once it is fixed, settling reads no price. (S-02, S-15a, S-23, M-31, Foundry `test_theReferencePriceIsFixedOnceAndLaterMovesChangeNothing`, `test_settlingReadsNoPriceOnceTheReferencePriceIsFixed`)
 
 ### 9.2 Phase 1: settle every Trove
-- **X2** `settleTrove(tid)` is permissionless and does constant work: touch the Trove (pending redistribution applied, interest already stopped), `need = ceil(debt × WAD / settlePrice)`, `contribution = min(coll, need)`, `gross = coll − contribution`. Then `badDebt += debt`, `badDebtColl += contribution`, `parTotal += need`, `contribTotal += contribution`; `gross_of[owner] += gross`, `settleSurplusPool += gross`, `settleSurplusGross += gross`, `settleShortTotal += need − contribution`; `unsettled −= 1`. The caller receives the Trove's remaining gas deposit (M-36). No step scans the set of Troves (an open-Trove counter `n_open` replaces every scan). (S-22, S-23, S-27a, M-37)
-- **X3** `settleTroves(tids)` settles ≤ 50 in one call. (S-27a)
-- **X4** Nothing is paid to any holder while `unsettled > 0`. (S-22, F, M-30)
+- **X2** `settleTrove(tid)` is permissionless and does constant work: touch the Trove (pending redistribution applied, interest already stopped), `need = ceil(debt × WAD / settlePrice)`, `contribution = min(coll, need)`, `gross = coll − contribution`. Then `badDebt += debt`, `badDebtColl += contribution`, `parTotal += need`, `contribTotal += contribution`; `gross_of[owner] += gross`, `settleSurplusPool += gross`, `settleSurplusGross += gross`, `settleShortTotal += need − contribution`; `unsettled −= 1`. The caller receives the Trove's remaining gas deposit (M-36). No step scans the set of Troves (an open-Trove counter `n_open` replaces every scan). (S-22, S-23, S-27a, M-37, Foundry `test_diff_settlementMatchesModel_oracleFailure`, `test_aTroveHandsThePotItsDebtAtTheReferencePriceAndTheCallerItsDeposit`)
+- **X3** `settleTroves(tids)` settles ≤ 50 in one call. (S-27a, Foundry `test_aBatchSettlesAtMostFiftyTroves`)
+- **X4** Nothing is paid to any holder while `unsettled > 0`. (S-22, F, M-30, Foundry `test_nothingIsPaidToAnyHolderWhileATroveIsUnsettled`)
 
 ### 9.3 Completion
-- **X5** After `WRITE_OFF_DELAY` (30 days) anyone may `writeOff(tid)` an unsettled Trove, for half its gas deposit: `badDebt += debt`, `parTotal += need`, `settleShortTotal += need`, `unsettled −= 1`; the Trove's debt leaves the Trove ledger and `aggDebt` is unchanged. Settling it before phase 1 ends reverses the write-off. (S-27b, S-29-5, M-34)
-- **X6** Phase 1 ends when `unsettled == 0`: `take = min(settleShortTotal, settleSurplusGross)`, `badDebtColl += take`, `settleSurplusPool −= take`, `keep = (G − take) / G` (`L_PRECISION`), `claimUnits = badDebt`. (S-23, S-28, M-38 the rejected vault-parity rule)
-- **X7** Late settlement of a written-off Trove recomputes `contribTotal`, `settleShortTotal`, `settleSurplusGross`, `take`, `keep`; holders receive `pot' − pot` through `latePerUnit` (every claim unit alike, exercised or not); the rest of the Trove's collateral goes to the surplus pool. Proof of exact conservation and of `pot' − pot ≥ 0` in `RESULTS.md`. (S-27b, S-29, S-30, M-35, M-39)
+- **X5** After `WRITE_OFF_DELAY` (30 days) anyone may `writeOff(tid)` an unsettled Trove, for half its gas deposit: `badDebt += debt`, `parTotal += need`, `settleShortTotal += need`, `unsettled −= 1`; the Trove's debt leaves the Trove ledger and `aggDebt` is unchanged. Settling it before phase 1 ends reverses the write-off. (S-27b, S-29-5, M-34, Foundry `test_aWriteOffWaitsThirtyDaysAndPaysHalfTheDeposit`, `test_diff_settlementMatchesModel_oracleFailure`)
+- **X6** Phase 1 ends when `unsettled == 0`: `take = min(settleShortTotal, settleSurplusGross)`, `badDebtColl += take`, `settleSurplusPool −= take`, `keep = (G − take) / G` (`L_PRECISION`), `claimUnits = badDebt`. A shutdown with no open Trove completes phase 1 at once. (S-23, S-28, M-38 the rejected vault-parity rule, Foundry `test_aShutdownWithNoOpenTroveCompletesPhaseOneAtOnce`, `test_everyOwnerGivesUpTheSameFractionOfHisSurplus`)
+- **X7** Late settlement of a written-off Trove recomputes `contribTotal`, `settleShortTotal`, `settleSurplusGross`, `take`, `keep`; holders receive `pot' − pot` through `latePerUnit` (every claim unit alike, exercised or not); the rest of the Trove's collateral goes to the surplus pool. Proof of exact conservation and of `pot' − pot ≥ 0` in `RESULTS.md`. (S-27b, S-29, S-30, M-35, M-39, Foundry `test_diff_settlementMatchesModel_oracleFailure`, `test_diff_settlementMatchesModel_emptyPot`)
 - **[open]** Real gas of X2/X3 on Base; behaviour when the shared parts (`_touch`, `_settlePrice`) revert persistently; a written-off Trove that can never be settled keeps its own collateral stuck; the deposit amount.
 
 ### 9.4 Phase 2: claims
-- **X8** `redeemBadDebtColl(R)` after phase 1: burns `R`, registers `units_of[who] += R` **even when the pot is empty**, pays `floor(badDebtColl × R / badDebt)` (or all if `R == badDebt`) plus any late share due. `repayBadDebt` is the same with an empty pot. (S-08, S-29-1/2, M-40)
-- **X9** Late share: `floor(units_of × latePerUnit / L_PRECISION) − latePaid`. (S-27b, S-29)
-- **X10** Rounding: each claim leaves < 1 wei in the pot; a later pay-out moves by at most one wei per earlier claim; splitting a claim into k parts loses ≤ k wei. (S-27c)
+- **X8** `redeemBadDebtColl(R)` after phase 1: burns `R`, registers `units_of[who] += R` **even when the pot is empty**, pays `floor(badDebtColl × R / badDebt)` (or all if `R == badDebt`) plus any late share due. `repayBadDebt` is the same with an empty pot. (S-08, S-29-1/2, M-40, Foundry `test_aClaimOnAnEmptyPotRegistersUnitsThatShareTheLateRecovery`, `test_diff_settlementMatchesModel_emptyPot`)
+- **X9** Late share: `floor(units_of × latePerUnit / L_PRECISION) − latePaid`. (S-27b, S-29, Foundry `test_aClaimOnAnEmptyPotRegistersUnitsThatShareTheLateRecovery`, `invariant_ledgersAgree`)
+- **X10** Rounding: each claim leaves < 1 wei in the pot; a later pay-out moves by at most one wei per earlier claim; splitting a claim into k parts loses ≤ k wei. (S-27c, Foundry `test_claimsArePaidProRataRoundedDownAndLeaveAtMostAWei`)
 
 ### 9.5 Borrowers' surplus
-- **X11** Claimable only after phase 1: `floor(gross_of × keep) − surplusPaidAmt`. Both factors are non-decreasing along every allowed path, so the time of claiming cannot change the total. Every healthy borrower gives up the same fraction of his surplus (`1 − keep`). (S-23, S-28, S-30, M-32, M-41)
+- **X11** Claimable only after phase 1: `floor(gross_of × keep) − surplusPaidAmt`. Both factors are non-decreasing along every allowed path, so the time of claiming cannot change the total. Every healthy borrower gives up the same fraction of his surplus (`1 − keep`). The surplus of a liquidation is not part of it (L3). (S-23, S-28, S-30, S-35, M-32, M-41, Foundry `test_everyOwnerGivesUpTheSameFractionOfHisSurplus`, `test_diff_settlementMatchesModel_surplusAbsorbs`, `test_diff_settlementMatchesModel_holdersHaircut`, `invariant_ledgersAgree`)
 - **X12** Path independence: 32 specified combinations (owners, deposits, recovery timing, claim timing, empty pot) end within 6 wei of an independent rational computation. Evidence over those combinations, not a proof over all paths. (S-30)
 
 ## 10. Deployment
@@ -200,7 +200,8 @@ The Python model does not define contract boundaries; the following is the contr
   `test_aRequestAboveTheBalanceIsRefusedEvenWhenLessWouldBeRedeemed`).
 - Burning: a branch burns USDarli only from the account that initiated the operation, or from the protocol's own accounts (the Stability Pool). `StableToken.burn` cannot check this (T1); the branches must, and their tests must show it (Foundry `test_repayBurnsFromTheCallerNeverFromTheOwner`; a liquidation burns the absorbed debt from the Stability Pool, and a redemption from the account that called the CollateralRegistry, `test_diff_branchTraceMatchesModel`, `test_diff_routingMatchesModel`).
 - Wiring: step A on request only by the branch's Stability Pool, step B on transfer only by its TroveNFT, redemption
-  inside a branch only by the system's CollateralRegistry (Foundry `test_onlyTheRegistryRedeemsFromTheBranch`); the vault, the NFT and the queue accept changes
+  inside a branch only by the system's CollateralRegistry (Foundry `test_onlyTheRegistryRedeemsFromTheBranch`), and the
+  branch's settlement hooks only by its BranchSettlement (Foundry `test_onlyTheSettlementMovesTheBranchAfterAShutdown`); the vault, the NFT and the queue accept changes
   only from their branch, the frontend registry only from a minter of the stablecoin (Foundry `test_wiredEntryPointsRefuseEveryoneElse`).
 - Internal functions (`_stepA`, `_touch`, `_redistribute`, `_endPhaseOne`, `_lateRecovery`, `_payGasDeposit`, `_sweepDustIfEmpty`) are never externally callable.
 - The redemption queue (`RateSortedList`) is changed only by its branch, fixed at construction, and makes no external call (Foundry
@@ -246,7 +247,7 @@ not behaviour. The honest measure is how many of the mutants a random tester kil
 | Debt cap | 09, 10 | M25–M27 | partly |
 | Oracle | 20 | M11–M15 | fuzz_oracle F1–F9 |
 | Revenue, frontends, staking, vault streams | 03, 04, 05, 13, 19, 21, 24 | M23, M28, M29 | yes (route, stake, claim) |
-| Settlement | 02, 15a, 16, 22, 23, 27–30 | M30–M42 | yes: `urgent` (settle/write-off), `late` and `claim_late` all carry coverage floors |
+| Settlement | 02, 15a, 16, 22, 23, 27–30, 35 | M30–M42, M48 | yes: `urgent` (settle/write-off), `late` and `claim_late` all carry coverage floors; four settlement traces against the contracts (Foundry) |
 | Deployment | 26 | — | — (Foundry) |
 | Not modelled | batch managers, LST pricing, ParameterStore, Uniswap position maths, zappers, real gas | | |
 

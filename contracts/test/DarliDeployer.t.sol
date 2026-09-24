@@ -280,6 +280,7 @@ contract DarliDeployerTest is Test {
                     frontends: IFrontendRegistry(one),
                     escrow: one,
                     collateralRegistry: one,
+                    settlement: one,
                     mcr: 110e16,
                     ccr: 150e16,
                     scr: 110e16,

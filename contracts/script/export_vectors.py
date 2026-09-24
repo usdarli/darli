@@ -206,6 +206,14 @@ assert not never_ok and rstats["bad_by_kind"]["redeem"] > 0, f"routing trace doe
 outr = Path(__file__).resolve().parent.parent / "test" / "vectors" / "routing_trace.json"
 outr.write_text(json.dumps(rtrace))
 
+# --- settlement after a shutdown (SPEC 9): see settle_trace.py --------------------------------------------------------- #
+import settle_trace  # noqa: E402
+
+sstats = {}
+for i, variant in enumerate(settle_trace.VARIANTS):
+    strace, sstats[variant] = settle_trace.build(random.Random(20260927 + i), variant)
+    (Path(__file__).resolve().parent.parent / "test" / "vectors" / f"settle_trace_{variant}.json").write_text(json.dumps(strace))
+
 # --- the Stability Pool on its own (SPEC SP2, SP4): see sp_trace.py ---------------------------------------------------- #
 import sp_trace  # noqa: E402
 
@@ -251,6 +259,12 @@ fig("routing_trace_steps", rstats["steps"])
 fig("routing_trace_redemptions", rstats["ok_by_kind"]["redeem"])
 fig("routing_trace_truncated", rstats["routing"]["truncated"])
 fig("routing_trace_by_debt", rstats["routing"]["by_debt"])
+fig("settle_trace_steps", sum(x["steps"] for x in sstats.values()))
+fig("settle_trace_settled", sum(x["settlement"]["settled"] for x in sstats.values()))
+fig("settle_trace_write_offs", sum(x["settlement"]["write_offs"] for x in sstats.values()))
+fig("settle_trace_late_settlements", sum(x["settlement"]["late"] for x in sstats.values()))
+fig("settle_trace_claims", sum(x["settlement"]["claims"] for x in sstats.values()))
+fig("settle_trace_under_water", sum(x["settlement"]["under_water"] for x in sstats.values()))
 dump("contracts")
 print(f"wrote {out} ({len(dp['out'])} decPow, {len(ia['out'])} stepA, {len(ib['out'])} stepB vectors, "
       f"{overflowing} of them beyond where debt * rate fits in 256 bits)")
@@ -264,5 +278,7 @@ print(f"wrote {outt} ({tstats['steps']} steps: {tstats['ok']} accepted, {tstats[
       f"{tstats['full_checks']} full checks; ends shut down)")
 print(f"wrote {outr} ({rstats['steps']} steps: {rstats['ok']} accepted, {rstats['refused']} refused; "
       f"{rstats['ok_by_kind']['redeem']} redemptions, routing {rstats['routing']})")
+for variant, x in sstats.items():
+    print(f"wrote settle_trace_{variant}.json ({x['steps']} steps: {x['ok']} accepted, {x['refused']} refused; {x['settlement']})")
 print(f"wrote {outl} ({n_ins} inserts, {n_rem} removals, {n_re} reinsertions; {len(checks['len'])} queues checked, "
       f"{ties} with tied rates, up to {max_size} Troves)")

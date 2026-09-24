@@ -9,8 +9,9 @@ import {TroveNFT} from "../src/core/TroveNFT.sol";
 import {RateSortedList} from "../src/core/RateSortedList.sol";
 import {StabilityPool} from "../src/core/StabilityPool.sol";
 import {CollateralRegistry} from "../src/core/CollateralRegistry.sol";
+import {BranchSettlement} from "../src/core/BranchSettlement.sol";
 import {BranchManager, BranchConfig} from "../src/core/BranchManager.sol";
-import {IBranchManager, IBranchRedemption} from "../src/interfaces/IBranchManager.sol";
+import {IBranchManager, IBranchRedemption, ISettlementHooks} from "../src/interfaces/IBranchManager.sol";
 import {IStabilityPool} from "../src/interfaces/IStabilityPool.sol";
 import {IFrontendRegistry, ICollateralVault, ITroveNFT, IRateSortedList} from "../src/interfaces/ICore.sol";
 import {IStableToken} from "../src/interfaces/IStableToken.sol";
@@ -51,12 +52,12 @@ contract CollateralRegistryTraceTest is Test {
         uint256[] memory prices = vm.parseJsonUintArray(json, ".config.prices");
         stable = new StableToken("USDarli", "USDarli", address(this));
         frontends = new FrontendRegistry(IStableToken(address(stable)), 3 * PCT);
-        // the registry first, then per branch: collateral, feed, vault, NFT, queue, pool, manager
+        // the registry first, then per branch: collateral, feed, vault, NFT, queue, pool, settlement, manager
         uint256 n = vm.getNonce(address(this));
         IBranchRedemption[] memory predicted = new IBranchRedemption[](N);
         address[] memory minters = new address[](N);
         for (uint256 i = 0; i < N; i++) {
-            minters[i] = vm.computeCreateAddress(address(this), n + 1 + 7 * i + 6);
+            minters[i] = vm.computeCreateAddress(address(this), n + 1 + 8 * i + 7);
             predicted[i] = IBranchRedemption(minters[i]);
         }
         collRegistry = new CollateralRegistry(IStableToken(address(stable)), predicted, 4 * E, 10 * PCT);
@@ -84,6 +85,7 @@ contract CollateralRegistryTraceTest is Test {
         TroveNFT nft = new TroveNFT(predicted, "Darli Trove", "DTROVE");
         list[i] = new RateSortedList(predicted);
         sp[i] = new StabilityPool(stable, coll[i], IBranchManager(predicted));
+        BranchSettlement settlement = new BranchSettlement(ISettlementHooks(predicted));
         manager[i] = new BranchManager(
             BranchConfig({
                 stable: IStableToken(address(stable)),
@@ -96,6 +98,7 @@ contract CollateralRegistryTraceTest is Test {
                 frontends: IFrontendRegistry(address(frontends)),
                 escrow: escrow,
                 collateralRegistry: address(collRegistry),
+                settlement: address(settlement),
                 mcr: 110 * PCT,
                 ccr: 150 * PCT,
                 scr: 110 * PCT,

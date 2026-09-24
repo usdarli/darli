@@ -11,6 +11,8 @@ import {StabilityPool} from "../src/core/StabilityPool.sol";
 import {TroveNFT} from "../src/core/TroveNFT.sol";
 import {CollateralRegistry} from "../src/core/CollateralRegistry.sol";
 import {RateSortedList} from "../src/core/RateSortedList.sol";
+import {BranchSettlement} from "../src/core/BranchSettlement.sol";
+import {L_PRECISION} from "../src/libraries/Constants.sol";
 import {Trove, TroveStatus, PriceStatus} from "../src/Types.sol";
 
 /// Random borrower operations by four users, with time and price moving. Every call is wrapped, so a refusal is an
@@ -23,6 +25,7 @@ contract BranchHandler is Test {
     TroveNFT public immutable nft;
     CollateralRegistry public immutable router;
     RateSortedList public immutable queue;
+    BranchSettlement public immutable settlement;
     uint256 constant E = 1e18;
     uint256 constant MAX = type(uint256).max;
     uint256 public accepted;
@@ -34,7 +37,8 @@ contract BranchHandler is Test {
         StabilityPool p,
         TroveNFT n,
         CollateralRegistry r,
-        RateSortedList q
+        RateSortedList q,
+        BranchSettlement z
     ) {
         manager = m;
         stable = s;
@@ -43,6 +47,7 @@ contract BranchHandler is Test {
         nft = n;
         router = r;
         queue = q;
+        settlement = z;
     }
 
     function _user(uint256 seed) internal pure returns (address) {
@@ -219,6 +224,50 @@ contract BranchHandler is Test {
         } catch {}
     }
 
+    /// Now and then the oracle fails for good: the rest of the run is the settlement.
+    function failOracle(uint256 s) external {
+        if (s % 8 != 0) return;
+        feed.set(feed.price(), PriceStatus.Failed);
+        manager.pokeOracle();
+    }
+
+    function settle(uint256 t, uint256 who) external {
+        vm.prank(_user(who));
+        try settlement.settleTrove(_trove(t)) {
+            _count(true);
+        } catch {}
+    }
+
+    function writeOff(uint256 t, uint256 who) external {
+        vm.prank(_user(who));
+        try settlement.writeOff(_trove(t)) {
+            _count(true);
+        } catch {}
+    }
+
+    function redeemBadDebt(uint256 who, uint256 amount) external {
+        address u = _user(who);
+        amount = bound(amount, 1, stable.balanceOf(u) + 1);
+        vm.prank(u);
+        try settlement.redeemBadDebtColl(amount, 0) {
+            _count(true);
+        } catch {}
+    }
+
+    function claimLate(uint256 who) external {
+        vm.prank(_user(who));
+        try settlement.claimLate() {
+            _count(true);
+        } catch {}
+    }
+
+    function claimSettlementSurplus(uint256 who) external {
+        vm.prank(_user(who));
+        try settlement.claimSurplus() {
+            _count(true);
+        } catch {}
+    }
+
     function warp(uint256 dt) external {
         vm.warp(block.timestamp + bound(dt, 1, 40 days));
     }
@@ -242,18 +291,18 @@ contract BranchHandler is Test {
 }
 
 /// SPEC I-1, I-2, I-4, I-5, I-17, I-19, I-21 and the queue rule R2, after any sequence of borrower operations,
-/// redemptions, liquidations and Stability Pool operations. The model checks the
+/// redemptions, liquidations and Stability Pool operations, and after a shutdown, of settlements, write-offs and claims. The model checks the
 /// same identities in `check_invariants`; here they are checked on the contracts.
 contract BranchManagerInvariantTest is StdInvariant, BranchFixture {
     BranchHandler handler;
 
     function setUp() public {
         deployBranch(2000 * E, 5_000_000 * E, 5_000_000 * E, E / 1000);
-        handler = new BranchHandler(manager, stable, feed, sp, nft, collRegistry, list);
+        handler = new BranchHandler(manager, stable, feed, sp, nft, collRegistry, list, settlement);
         for (uint256 i = 0; i < 4; i++) {
             weth.mint(account(i), 10_000 * E);
         }
-        bytes4[] memory s = new bytes4[](24);
+        bytes4[] memory s = new bytes4[](31);
         s[0] = BranchHandler.open.selector;
         s[1] = BranchHandler.open.selector;
         s[2] = BranchHandler.borrow.selector;
@@ -278,6 +327,13 @@ contract BranchManagerInvariantTest is StdInvariant, BranchFixture {
         s[21] = BranchHandler.redeem.selector;
         s[22] = BranchHandler.redeem.selector;
         s[23] = BranchHandler.redeemHead.selector;
+        s[24] = BranchHandler.failOracle.selector;
+        s[25] = BranchHandler.settle.selector;
+        s[26] = BranchHandler.settle.selector;
+        s[27] = BranchHandler.writeOff.selector;
+        s[28] = BranchHandler.redeemBadDebt.selector;
+        s[29] = BranchHandler.claimLate.selector;
+        s[30] = BranchHandler.claimSettlementSurplus.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: s}));
         targetContract(address(handler));
     }
@@ -291,6 +347,7 @@ contract BranchManagerInvariantTest is StdInvariant, BranchFixture {
         uint256 sumGas;
         uint256 open;
         uint256 active;
+        uint256 written;
         uint256 sumPendColl;
         for (uint256 id = 1; id < n; id++) {
             Trove memory t = manager.getTrove(id);
@@ -302,6 +359,8 @@ contract BranchManagerInvariantTest is StdInvariant, BranchFixture {
             }
             open++;
             if (t.status == TroveStatus.Active) active++;
+            (,, bool set) = settlement.writtenOff(id);
+            if (set) written++;
             assertEq(list.contains(id), t.status == TroveStatus.Active, "R2: the queue holds exactly the Active Troves");
             sumDebt += manager.troveDebt(id);
             sumPendColl += manager.troveColl(id) - t.coll;
@@ -324,9 +383,14 @@ contract BranchManagerInvariantTest is StdInvariant, BranchFixture {
         assertEq(manager.gasPool(), sumGas, "I-21: gas pool is not the sum of the per-Trove deposits");
         assertEq(manager.nOpen(), open, "the open-Trove counter drifted");
         assertEq(list.size(), active, "R2: queue size");
-        // R2: the tracked Zombie is a Zombie with debt left; one redeemed to zero is not tracked
+        if (manager.ledger().shutdownAt != 0) {
+            assertEq(manager.unsettled(), open - written, "X2, X5: unsettled counts the open Troves not written off");
+        }
+        // R2: the tracked Zombie is a Zombie with debt left; one redeemed to zero is not tracked. A property of the live
+        // branch: after a shutdown nothing is redeemed, so the pointer is never read again, and a write-off (X5) takes
+        // the tracked Zombie's debt to zero without clearing it, in the model as here
         uint256 z = manager.lastZombieTroveId();
-        if (z != 0) {
+        if (z != 0 && manager.ledger().shutdownAt == 0) {
             assertEq(uint8(manager.getTrove(z).status), uint8(TroveStatus.Zombie), "R2: the tracked Trove is no Zombie");
             assertGt(manager.getTrove(z).recordedDebt, 0, "R2: a Zombie at zero debt is still tracked");
         }
@@ -339,9 +403,11 @@ contract BranchManagerInvariantTest is StdInvariant, BranchFixture {
         }
         assertEq(
             vault.accountedColl(),
-            manager.activeColl() + manager.defaultColl() + manager.gasPool() + surpluses + manager.ledger().badDebtColl,
+            manager.activeColl() + manager.defaultColl() + manager.gasPool() + surpluses + manager.ledger().badDebtColl
+                + settlement.settleSurplusPool() + settlement.latePool(),
             "I-4 / B12: vault accounting"
         );
+        _settlementPoolsCoverWhatTheyOwe();
         assertGe(weth.balanceOf(address(vault)), vault.accountedColl(), "I-4: vault holds less than it accounts");
         // I-17: the registry can pay every claim, and never credited more than was deposited
         uint256 claims;
@@ -355,6 +421,23 @@ contract BranchManagerInvariantTest is StdInvariant, BranchFixture {
         if (manager.ledger().badDebtColl > 0) {
             assertGt(manager.ledger().badDebt, 0, "I-19: ownerless bad-debt collateral");
         }
+    }
+
+    /// X9, X11: the late pool covers every late share not yet paid, and the owners' pool every kept surplus not yet paid.
+    /// The model checks the same by a bound of zero wei.
+    function _settlementPoolsCoverWhatTheyOwe() internal view {
+        uint256 lateOwed;
+        uint256 surplusOwed;
+        uint256 keep = settlement.surplusKeep();
+        for (uint256 i = 0; i < 4; i++) {
+            address u = account(i);
+            lateOwed += settlement.unitsOf(u) * settlement.latePerUnit() / L_PRECISION - settlement.latePaid(u);
+            if (settlement.keepFixed()) {
+                surplusOwed += settlement.grossOf(u) * keep / L_PRECISION - settlement.surplusPaid(u);
+            }
+        }
+        assertLe(lateOwed, settlement.latePool(), "X9: the late pool cannot pay the late shares");
+        assertLe(surplusOwed, settlement.settleSurplusPool(), "X11: the owners' pool cannot pay the kept surplus");
     }
 
     /// I-5: the pool holds every deposit it still owes and every gain it has credited.

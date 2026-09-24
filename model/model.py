@@ -1135,8 +1135,20 @@ class Branch:
         self.n_redist += 1
 
     def claim_surplus(self, who):
+        """Both surpluses in one transaction: the settlement part first, so an owner with settlement surplus before phase 1
+        ends is refused as a whole. Each part can also be claimed on its own."""
+        return self.claim_settlement_surplus(who) + self.claim_liquidation_surplus(who)
+
+    def claim_liquidation_surplus(self, who):
+        """SPEC L3: what a liquidation left over belongs to the owner, claimable any time, also during settlement phase 1."""
         amt = self.surplus[who]
         self.surplus[who] = 0
+        self._coll_out(who, amt)
+        return amt
+
+    def claim_settlement_surplus(self, who):
+        """SPEC X11: the owner's kept share of the surplus of his settled Troves, released when phase 1 is complete."""
+        amt = 0
         if self.gross_of[who]:
             require(self.unsettled == 0 and self.surplus_keep is not None, "surplus is released when settlement phase 1 is complete")
             # entitlement = floor(gross * keep) - amount actually paid. gross only grows (a late Trove of the same owner) and keep
@@ -1146,8 +1158,8 @@ class Branch:
             if part > 0:
                 self.surplus_paid_amt[who] += part
                 self.settle_surplus_pool -= part
-                amt += part
-        self._coll_out(who, amt)
+                amt = part
+            self._coll_out(who, amt)
         return amt
 
     # -- redemption inside the branch (SPEC 5) ------------------------------------
