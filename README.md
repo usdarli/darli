@@ -52,7 +52,7 @@ An immutable, ETH-backed stablecoin protocol for Base: borrowers set their own i
 
 ## Open items before implementation
 
-See `docs/SPEC.md` §13: the gas deposit amount, the oracle's gas stipends, thresholds and pool set, DARLI supply and distribution, and legal review before any deployment.
+See `docs/SPEC.md` §13: DARLI supply and distribution, and legal review before any deployment.
 
 ## Comparison with similar protocols
 

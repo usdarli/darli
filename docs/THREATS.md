@@ -55,7 +55,7 @@ the ledger.
 | T10 | Redemption against the wrong Troves, or at the wrong price | Lowest rate first; the redemption price never below the price | R-rules; S-33, S-34; routing trace replay |
 | T11 | After a shutdown, early claimers take more than late ones | Staged settlement: one reference price, every Trove settled, then one rate | X-rules; S-23, S-28; settlement trace replays |
 | T12 | Settlement blocked for ever by the feed | The reference price is fixed in the shutdown transaction and never read again | X1; S-37; `test_aShutdownInATemporaryOracleStateFixesTheLastGoodPriceAndNeverWaits`; `invariant_ledgersAgree` |
-| T13 | Settlement blocked by Troves nobody processes | Gas deposit paid to the settler; write-off after the delay | X2, X5; the deposit amount is open (SPEC 13) |
+| T13 | Settlement blocked by Troves nobody processes | Gas deposit paid to the settler; write-off after the delay | X2, X5; the deposit is 0.001 ETH (SPEC 2), sized against the cold-gas bounds of `SettlementGas.t.sol` and a year of Base gas prices |
 | T14 | Reentrancy or a callback into user code | Every external entry point is non-reentrant; the core calls no user code; its tokens have no hooks | 10.5 |
 | T15 | Rounding drains value over many operations | Round up when minting, down when paying; ε never negative | Section 1; I-2; X10 |
 | T16 | The canonical pool is initialised first at a false price | Tolerated: the empty pool's price is corrected for free, the vault refuses deposits outside its range | D2, D4; `test_fork_aRacedPoolIsToleratedItsPriceCorrectedForFreeAndTheVaultGuardHolds` |

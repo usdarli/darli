@@ -5,7 +5,7 @@ import {console2} from "forge-std/Test.sol";
 import {BranchFixture} from "./BranchFixture.sol";
 import "../src/Types.sol";
 
-/// SPEC 13 item 1 (the gas deposit) needs the gas a keeper spends on the calls the deposit pays for. Each is measured
+/// The gas deposit (SPEC 2) is sized against the gas a keeper spends on the calls the deposit pays for. Each is measured
 /// here as the first touch of every account and slot in its transaction, as a keeper would meet it. The bounds pin the
 /// measurements: a change that makes settlement or liquidation dearer fails here before it silently outgrows the deposit.
 contract SettlementGasTest is BranchFixture {

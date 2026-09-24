@@ -11,12 +11,12 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 
 | file | hash |
 | --- | --- |
-| contracts/fork/BaseFork.t.sol | `ec48d81e1c9eabc1` |
+| contracts/fork/BaseFork.t.sol | `10fbc867af02f1cf` |
 | contracts/fork/ForceInclusion.t.sol | `cde145ae6a2e72a5` |
 | contracts/foundry.toml | `8e5576a6ce9c627f` |
 | contracts/remappings.txt | `92d8fe713d1d0c46` |
-| contracts/script/DarliSystem.s.sol | `740988106577d832` |
-| contracts/script/DeployFeed.s.sol | `a8d85dc9364d024a` |
+| contracts/script/DarliSystem.s.sol | `483a44e1c2a7e7b6` |
+| contracts/script/DeployFeed.s.sol | `11df51d5252147fd` |
 | contracts/script/ForceInclude.s.sol | `214c5259214e8dfb` |
 | contracts/script/RehearseUse.s.sol | `1e2a7d962c1600bb` |
 | contracts/script/branch_trace.py | `82843e4c3260e94c` |
@@ -68,20 +68,20 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | contracts/test/CollateralRegistry.trace.t.sol | `7a39073118a06095` |
 | contracts/test/DarliDeployer.t.sol | `80687e3ede7e8e5c` |
 | contracts/test/DarliStaking.trace.t.sol | `fc6ef201f9d70b7a` |
-| contracts/test/DarliSystem.t.sol | `40308903b35b6d27` |
+| contracts/test/DarliSystem.t.sol | `0ba38613616142b2` |
 | contracts/test/FixedPointMath.t.sol | `8727fe555bb91e53` |
 | contracts/test/LPFeeAccounting.trace.t.sol | `0110b18fdf277ef9` |
 | contracts/test/Liquidation.t.sol | `98c49a26b1b94709` |
 | contracts/test/LiquidityVault.t.sol | `21b578a106e0bffc` |
 | contracts/test/OracleFeed.t.sol | `c8b549acd2e3495b` |
-| contracts/test/OracleTrace.t.sol | `91e112ebdea4c431` |
+| contracts/test/OracleTrace.t.sol | `7d0c3a7b55ab92dd` |
 | contracts/test/PoolTwapSource.t.sol | `300b4ee5f5f81bda` |
 | contracts/test/RateSortedList.invariant.t.sol | `8fa8e6a375e4ed7d` |
 | contracts/test/RateSortedList.t.sol | `85ae503e09a92cf0` |
 | contracts/test/Redemption.t.sol | `148b3be0d7adf45f` |
 | contracts/test/Revenue.t.sol | `d033859f98d33fbe` |
 | contracts/test/Settlement.t.sol | `1d6660ba88b8e53c` |
-| contracts/test/SettlementGas.t.sol | `c9a6c11e547410b7` |
+| contracts/test/SettlementGas.t.sol | `bfb6d5598f02057b` |
 | contracts/test/StabilityPool.t.sol | `c7530b42b466d6c5` |
 | contracts/test/StableToken.t.sol | `049ab75f2a809d16` |
 | contracts/test/mocks/BranchMocks.sol | `dcc3313ca6048a53` |
@@ -100,8 +100,8 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | contracts/test/vectors/sorted_list.json | `aee5b22cb952dcd8` |
 | contracts/test/vectors/stability_pool.json | `10988275992dda22` |
 | contracts/test/vectors/staking_trace.json | `46d5ccd5f5b8bf6c` |
-| docs/SPEC.md | `df5069d60163da7c` |
-| model/base_gas_history.py | `dff8cbe34d3d1d7d` |
+| docs/SPEC.md | `6868b610c61a573c` |
+| model/base_gas_history.py | `10e6a9e1669015de` |
 | model/beta_pilot_compare.py | `64251462b830a798` |
 | model/check_figures.py | `a020fc9d36346070` |
 | model/check_manifest.py | `dc4d3869bfaef8de` |
@@ -111,7 +111,7 @@ and the forge result mean nothing without knowing which Solidity sources and whi
 | model/fuzz_oracle.py | `0386cb59271735dd` |
 | model/model.py | `f57bc8f7838b6a37` |
 | model/mutants.py | `3e1962e6f818c6e4` |
-| model/oracle_history.py | `bcd6e80c9b361d00` |
+| model/oracle_history.py | `da2d9d741c63704f` |
 | model/pilot_sweep.py | `0c455b594abe902b` |
 | model/results/base_gas_history.jsonl | `04481b5b0991e022` |
 | model/results/beta_pilot_compare.jsonl | `fa07685fba612226` |
@@ -262,7 +262,7 @@ low-rate borrowers are pushed out. A companion study on a virtual-reserve pool, 
 **Neither result settles beta**; what the two studies show together is that beta trades the
 holders' cost of exit against the borrowers' redemption burden, and that its effect depends on the shape of the liquidity. The dynamic formulas still show no advantage.
 
-### `python3 oracle_history.py` — the oracle's thresholds against a year of Base history (SPEC 13 item 2)
+### `python3 oracle_history.py` — the oracle's thresholds against a year of Base history (SPEC 2)
 <!-- fig:studies.oracle_history_table -->
 
 | window | largest gap, any sample | 99th percentile, ordinary days | minutes / longest stretch beyond 2 % | beyond 3 % | beyond 5 % |
@@ -272,10 +272,10 @@ holders' cost of exit against the borrowers' redemption burden, and that its eff
 | 30 min | 5.89% | 1.33% | 209 / 23 | 66 / 17 | 2 / 2 |
 
 <!-- /fig -->
-**Reading.** <!-- fig:studies.oracle_history_samples -->3,296<!-- /fig --> blocks of the year before the fork tests' pinned block, <!-- fig:studies.oracle_history_episode_samples -->2,896<!-- /fig --> of them one minute apart for three hours around each of the sixteen fastest hours of the year (Chainlink moved <!-- fig:studies.oracle_history_fastest_hour_pct -->8.7<!-- /fig -->% in the fastest, <!-- fig:studies.oracle_history_16th_fastest_hour_pct -->3.9<!-- /fig -->% in the sixteenth), the rest at random. At each, what the two-source feed would have read: the Chainlink answer, and the pool source's weighted median over the four pools of the fork tests, computed with the model's own arithmetic (the contract's, bit for bit). The table gives the gap between the two; "minutes / longest stretch" counts, in the fast hours only, the minutes the cross-check would have held the price invalid at that bound, and its longest uninterrupted stretch. The gap is the pools' lag behind a fast market plus Chainlink's own. A 30-minute window lags so far that a bound tight enough to catch a wrong feed would have paused liquidations in exactly the hours that need them; the 10-minute window's largest gap was <!-- fig:studies.oracle_history_max_gap_600_pct -->3.84<!-- /fig -->%, under a 5 % bound in every sample. In no sample was a pool's last observation older than <!-- fig:studies.oracle_history_max_pool_age_min -->37<!-- /fig --> minutes, their total weight never below <!-- fig:studies.oracle_history_min_total_weight_musd -->19.5<!-- /fig --> million dollars, and the USDT pool never held more than <!-- fig:studies.oracle_history_max_usdt_share_pct -->3.1<!-- /fig -->% of it: the median is, in practice, the USDC pools'. The study measures; the values are decided in SPEC 13.
+**Reading.** <!-- fig:studies.oracle_history_samples -->3,296<!-- /fig --> blocks of the year before the fork tests' pinned block, <!-- fig:studies.oracle_history_episode_samples -->2,896<!-- /fig --> of them one minute apart for three hours around each of the sixteen fastest hours of the year (Chainlink moved <!-- fig:studies.oracle_history_fastest_hour_pct -->8.7<!-- /fig -->% in the fastest, <!-- fig:studies.oracle_history_16th_fastest_hour_pct -->3.9<!-- /fig -->% in the sixteenth), the rest at random. At each, what the two-source feed would have read: the Chainlink answer, and the pool source's weighted median over the four pools of the fork tests, computed with the model's own arithmetic (the contract's, bit for bit). The table gives the gap between the two; "minutes / longest stretch" counts, in the fast hours only, the minutes the cross-check would have held the price invalid at that bound, and its longest uninterrupted stretch. The gap is the pools' lag behind a fast market plus Chainlink's own. A 30-minute window lags so far that a bound tight enough to catch a wrong feed would have paused liquidations in exactly the hours that need them; the 10-minute window's largest gap was <!-- fig:studies.oracle_history_max_gap_600_pct -->3.84<!-- /fig -->%, under a 5 % bound in every sample. In no sample was a pool's last observation older than <!-- fig:studies.oracle_history_max_pool_age_min -->37<!-- /fig --> minutes, their total weight never below <!-- fig:studies.oracle_history_min_total_weight_musd -->19.5<!-- /fig --> million dollars, and the USDT pool never held more than <!-- fig:studies.oracle_history_max_usdt_share_pct -->3.1<!-- /fig -->% of it: the median is, in practice, the USDC pools'. SPEC 2 takes from it the 10-minute window and a 5 % bound, with 1 hour for a pool's staleness and a floor of 5 million dollars of weight.
 
-### `python3 base_gas_history.py` — Base gas prices over the same year, for the gas deposit (SPEC 13 item 1)
-**Reading.** <!-- fig:studies.gas_history_hours -->8,761<!-- /fig --> hours, each the base fee of 1,024 blocks and the priority fee of the last 20. The median base fee was <!-- fig:studies.gas_history_median_gwei -->0.0050<!-- /fig --> gwei. Taking in each hour the highest base fee plus the highest 90th-percentile tip, 99 % of the hours stayed at or below <!-- fig:studies.gas_history_p99_gwei -->1.000<!-- /fig --> gwei, and the single highest was <!-- fig:studies.gas_history_max_gwei -->49.705<!-- /fig --> gwei, for moments. The cost of the calls the deposit pays for is bounded in `contracts/test/SettlementGas.t.sol` (cold, as a keeper meets it): 420,000 gas for settling a Trove alone, 150,000 per Trove in a batch, 300,000 for a write-off, 500,000 for a liquidation. A worked example from those bounds: a deposit of 0.001 ETH pays a lone settlement, with the transaction's own 21,000 gas, at up to 0.001 / 441,000 ETH per gas, about 2.27 gwei; half of it pays a write-off up to about 1.56 gwei. Settlement can wait for a quiet hour, which liquidation cannot; a liquidation is also paid 0.5 % of the collateral (L3). The study measures; the amount is decided in SPEC 13.
+### `python3 base_gas_history.py` — Base gas prices over the same year, for the gas deposit (SPEC 2)
+**Reading.** <!-- fig:studies.gas_history_hours -->8,761<!-- /fig --> hours, each the base fee of 1,024 blocks and the priority fee of the last 20. The median base fee was <!-- fig:studies.gas_history_median_gwei -->0.0050<!-- /fig --> gwei. Taking in each hour the highest base fee plus the highest 90th-percentile tip, 99 % of the hours stayed at or below <!-- fig:studies.gas_history_p99_gwei -->1.000<!-- /fig --> gwei, and the single highest was <!-- fig:studies.gas_history_max_gwei -->49.705<!-- /fig --> gwei, for moments. The cost of the calls the deposit pays for is bounded in `contracts/test/SettlementGas.t.sol` (cold, as a keeper meets it): 420,000 gas for settling a Trove alone, 150,000 per Trove in a batch, 300,000 for a write-off, 500,000 for a liquidation. A worked example from those bounds: a deposit of 0.001 ETH pays a lone settlement, with the transaction's own 21,000 gas, at up to 0.001 / 441,000 ETH per gas, about 2.27 gwei; half of it pays a write-off up to about 1.56 gwei. Settlement can wait for a quiet hour, which liquidation cannot; a liquidation is also paid 0.5 % of the collateral (L3). SPEC 2 takes 0.001 ETH.
 
 ### Studies referred to but not in this package
 
